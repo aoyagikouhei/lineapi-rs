@@ -5,7 +5,8 @@ use thiserror::Error;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub message: String,
-    pub details: Vec<ErrorDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Vec<ErrorDetail>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

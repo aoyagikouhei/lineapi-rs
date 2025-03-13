@@ -18,6 +18,7 @@ pub struct RequestBody {
 struct SentMessage {
     id: String,
     #[serde(alias = "quoteToken")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     quote_token: Option<String>,
 }
 
@@ -25,6 +26,7 @@ struct SentMessage {
 pub struct ResponseBody {
     #[serde(alias = "sentMessages")]
     sent_messages: Vec<SentMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>, // リトライの時に入る可能性がある
 }
 
