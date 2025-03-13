@@ -14,3 +14,7 @@ tokio = { version = "1", features = ["time"] }
 [features]
 default = ["reqwest/default-tls"]
 rustls-tls = ["reqwest/rustls-tls"]
+
+[dev-dependencies]
+anyhow = "1"
+tokio = { version = "1", features = ["macros", "rt"] }
