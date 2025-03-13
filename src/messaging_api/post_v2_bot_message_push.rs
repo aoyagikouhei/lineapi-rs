@@ -48,3 +48,29 @@ pub async fn execute(
 ) -> Result<(ResponseBody, LineResponseHeader), Error> {
     execute_api(|| build(&body, channel_access_token, options), options).await
 }
+
+
+#[cfg(test)]
+mod tests {
+    use crate::messaging_api::LineOptions;
+
+    // USER_ID=xxx CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_post_v2_bot_message_push -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_messaging_api_post_v2_bot_message_push() {
+        let user_id = std::env::var("USER_ID").unwrap();
+        let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
+        let options = LineOptions::default();
+        let body = super::RequestBody {
+            to: user_id,
+            messages: vec![serde_json::json!({
+                "type": "text",
+                "text": "Hello, world!"
+            })],
+        };
+        let (response, header) = super::execute(body, &channel_access_token, &options)
+            .await
+            .unwrap();
+        println!("{:?}", response);
+        println!("{:?}", header);
+    }
+}

@@ -45,9 +45,10 @@ mod tests {
         let user_id = std::env::var("USER_ID").unwrap();
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
         let options = LineOptions::default();
-        let (response, _) = super::execute(&user_id, &channel_access_token, &options)
+        let (response, header) = super::execute(&user_id, &channel_access_token, &options)
             .await
             .unwrap();
         println!("{:?}", response);
+        println!("{:?}", header);
     }
 }
