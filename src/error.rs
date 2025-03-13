@@ -17,14 +17,8 @@ pub struct ErrorDetail {
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("IO {0}")]
-    IO(#[from] std::io::Error),
-
     #[error("Timeout")]
     Timeout,
-
-    #[error("Upload {0}")]
-    Upload(String),
 
     #[error("Other {0}")]
     Other(String, StatusCode),
@@ -37,4 +31,25 @@ pub enum Error {
 
     #[error("Line {0:?} {1}")]
     Line(ErrorResponse, StatusCode),
+}
+
+impl Error {
+    pub fn make_json(&self) -> serde_json::Value {
+        match self {
+            Error::Line(response, _) => {
+                serde_json::to_value(response).unwrap()
+            }
+            Error::Other(messages, status_code ) => {
+                serde_json::json!({
+                    "message": messages,
+                    "status_code": status_code.as_u16()
+                })
+            }
+            _ => {
+                serde_json::json!({
+                    "message": self.to_string()
+                })
+            }
+        }
+    }
 }
