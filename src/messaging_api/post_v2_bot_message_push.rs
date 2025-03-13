@@ -20,6 +20,8 @@ struct SentMessage {
     #[serde(alias = "quoteToken")]
     #[serde(skip_serializing_if = "Option::is_none")]
     quote_token: Option<String>,
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,6 +30,8 @@ pub struct ResponseBody {
     sent_messages: Vec<SentMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>, // リトライの時に入る可能性がある
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 pub fn build(

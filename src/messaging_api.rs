@@ -1,7 +1,10 @@
 use std::time::Duration;
 
-use reqwest::{RequestBuilder, header::AUTHORIZATION};
-use serde::de::DeserializeOwned;
+use reqwest::{
+    RequestBuilder, Response, StatusCode,
+    header::{self, AUTHORIZATION},
+};
+use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use crate::error::{Error, ErrorResponse};
@@ -16,9 +19,10 @@ const PREFIX_URL: &str = "https://api.line.me";
 const ENV_KEY: &str = "LINE_API_PREFIX_URL";
 const HEADER_RETRY_KEY: &str = "X-Line-Retry-Key";
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct LineResponseHeader {
     pub request_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub accepted_request_id: Option<String>,
 }
 
@@ -76,21 +80,31 @@ where
 {
     // リトライ処理
     // https://developers.line.biz/ja/docs/messaging-api/retrying-api-request/#flow-of-api-request-retry
-    let mut res = Err(Error::Timeout);
+    let mut res = Err(Error::Invalid("fail loop".to_string()));
     let retry_key = Uuid::now_v7().to_string();
     let try_count = options.get_try_count();
     let retry_duration = options.get_retry_duration();
     for i in 0..try_count {
         // リクエスト準備
         let mut builder = f();
-        if try_count > 0 {
+        // リトライ処理はtry_countが1以上の場合のみ
+        if try_count > 1 {
             // リトライ回数がある場合はリトライキーをヘッダーに追加
             builder = builder.header(HEADER_RETRY_KEY, &retry_key);
         }
         match execute_api_raw(builder).await {
-            Ok((json, header)) => {
-                let data = serde_json::from_value(json)?;
-                res = Ok((data, header));
+            Ok((json, line_header, status_code)) => {
+                res = match serde_json::from_value(json.clone()) {
+                    // フォーマットがあっている
+                    Ok(data) => Ok((data, line_header)),
+                    // フォーマットが違っている場合
+                    Err(_err) => match serde_json::from_value::<ErrorResponse>(json.clone()) {
+                        Ok(error_response) => {
+                            Err(Error::Line(error_response, status_code, line_header))
+                        }
+                        Err(_) => Err(Error::OtherJson(json, status_code, line_header)),
+                    },
+                };
                 break;
             }
             Err(err) => {
@@ -112,13 +126,9 @@ where
     res
 }
 
-async fn execute_api_raw(
-    builder: RequestBuilder,
-) -> Result<(serde_json::Value, LineResponseHeader), Error> {
-    let response = builder.send().await?;
-    let status_code = response.status();
-    let headers = response.headers().clone();
-    let text = response.text().await?;
+// LINE用のヘッダーを回収する
+fn make_line_header(response: &Response) -> LineResponseHeader {
+    let headers: &header::HeaderMap = response.headers();
     let request_id = headers
         .get("X-Line-Request-Id")
         .map(|it| it.to_str().unwrap_or(""))
@@ -126,19 +136,30 @@ async fn execute_api_raw(
     let accepted_request_id = headers
         .get("X-Line-Accepted-Request-Id")
         .map(|it| it.to_str().unwrap_or("").to_string());
-    let line_header = LineResponseHeader {
+    LineResponseHeader {
         request_id: request_id.to_owned(),
         accepted_request_id,
-    };
+    }
+}
+
+// APIを実行して一時的にエラーをハンドリングする
+async fn execute_api_raw(
+    builder: RequestBuilder,
+) -> Result<(serde_json::Value, LineResponseHeader, StatusCode), Error> {
+    let response = builder.send().await?;
+    let status_code = response.status();
+    let line_header = make_line_header(&response);
+    let text = response.text().await.unwrap_or_default();
     let Ok(json) = serde_json::from_str(&text) else {
-        return Err(Error::Other(text, status_code));
+        return Err(Error::OtherText(text, status_code, line_header));
     };
-    if status_code.is_success() || status_code.as_u16() == 409 {
-        Ok((json, line_header))
+    // コンフリクトしてもメッセージ送信はフォーマットが崩れないので成功とする
+    if status_code.is_success() || status_code == StatusCode::CONFLICT {
+        Ok((json, line_header, status_code))
     } else {
-        let Ok(error_response) = serde_json::from_value::<ErrorResponse>(json) else {
-            return Err(Error::Other(text, status_code));
-        };
-        Err(Error::Line(error_response, status_code))
+        match serde_json::from_value::<ErrorResponse>(json.clone()) {
+            Ok(error_response) => Err(Error::Line(error_response, status_code, line_header)),
+            Err(_) => Err(Error::OtherJson(json, status_code, line_header)),
+        }
     }
 }

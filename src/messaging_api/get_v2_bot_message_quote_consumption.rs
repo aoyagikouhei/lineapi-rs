@@ -12,6 +12,8 @@ const URL: &str = "/v2/bot/message/quota/consumption";
 pub struct ResponseBody {
     #[serde(alias = "totalUsage")]
     pub total_usage: i64,
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 pub fn build(channel_access_token: &str, options: &LineOptions) -> RequestBuilder {

@@ -16,6 +16,8 @@ pub struct ResponseBody {
     pub language: Option<String>,
     pub picture_url: Option<String>,
     pub status_message: Option<String>,
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 pub fn build(user_id: &str, channel_access_token: &str, options: &LineOptions) -> RequestBuilder {
@@ -65,7 +67,7 @@ mod tests {
         let (response, header) = super::execute(&user_id, &channel_access_token, &options)
             .await
             .unwrap();
-        println!("{:?}", response);
+        println!("{}", serde_json::to_value(response).unwrap());
         println!("{:?}", header);
     }
 }

@@ -13,6 +13,8 @@ pub struct ResponseBody {
     #[serde(alias = "type")]
     pub type_code: String,
     pub value: Option<i64>,
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 pub fn build(channel_access_token: &str, options: &LineOptions) -> RequestBuilder {
