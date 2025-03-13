@@ -1,7 +1,15 @@
 [package]
 name = "lineapi"
 version = "0.1.0"
+authors = ["aoyagikouhei <aoyagi.kouhei@gmail.com>"]
+license = "MIT"
 edition = "2024"
+description = "LINE API library."
+repository = "https://github.com/aoyagikouhei/lineapi-rs"
+keywords = ["line", "v2", "api"]
+categories = ["api-bindings"]
+readme = "README.md"
+documentation = "https://docs.rs/lineapi"
 
 [dependencies]
 reqwest = { version = "0.12", features = ["json", "multipart"], default-features = false, optional = true }
