@@ -41,6 +41,15 @@ pub enum Error {
 }
 
 impl Error {
+    pub fn status_code(&self) -> Option<StatusCode> {
+        match self {
+            Error::Line(_, status_code, _) => Some(*status_code),
+            Error::OtherJson(_, status_code, _) => Some(*status_code),
+            Error::OtherText(_, status_code, _) => Some(*status_code),
+            _ => None,
+        }
+    }
+
     pub fn make_json(&self) -> serde_json::Value {
         match self {
             Error::Line(response, status_code, line_header) => {

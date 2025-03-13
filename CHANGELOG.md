@@ -1,5 +1,8 @@
 ## Changes
 
+### v0.2.1 (2025/03/14)
+#### Add get status code from Error
+
 ### v0.2.0 (2025/03/14)
 #### Modify enum Error
 - separete other
