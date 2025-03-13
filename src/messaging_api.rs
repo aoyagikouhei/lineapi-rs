@@ -32,7 +32,7 @@ pub struct LineOptions {
 
 impl LineOptions {
     pub fn get_try_count(&self) -> u8 {
-        self.try_count.unwrap_or(0)
+        self.try_count.unwrap_or(1)
     }
 
     pub fn get_retry_duration(&self) -> Duration {
@@ -80,7 +80,7 @@ where
     let retry_key = Uuid::now_v7().to_string();
     let try_count = options.get_try_count();
     let retry_duration = options.get_retry_duration();
-    for i in 0..=try_count {
+    for i in 0..try_count {
         // リクエスト準備
         let mut builder = f();
         if try_count > 0 {
@@ -94,11 +94,16 @@ where
                 break;
             }
             Err(err) => {
+                tracing::debug!("error: {:?}", err);
                 if i + 1 >= try_count {
                     // リトライ回数がオーバーしたので失敗にする
                     res = Err(err);
                 } else if retry_duration.as_secs() > 0 {
                     // リトライ間隔がある場合は待つ
+                    // exponential backoff
+                    // 0の時1回、1の時2回、2の時4回、3の時8回
+                    let retry_count = 2u64.pow(i as u32) as u32;
+                    let retry_duration = retry_duration * retry_count;
                     tokio::time::sleep(retry_duration).await;
                 }
             }

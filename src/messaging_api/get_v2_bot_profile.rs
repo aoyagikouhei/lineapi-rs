@@ -37,14 +37,31 @@ pub async fn execute(
 
 #[cfg(test)]
 mod tests {
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
     use crate::messaging_api::LineOptions;
 
     // USER_ID=aaa CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_get_v2_bot_profile -- --nocapture --test-threads=1
     #[tokio::test]
     async fn test_messaging_api_get_v2_bot_profile() {
+        let subscriber = FmtSubscriber::builder()
+            // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
+            // will be written to stdout.
+            .with_max_level(Level::DEBUG)
+            // completes the builder.
+            .finish();
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
         let user_id = std::env::var("USER_ID").unwrap();
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
-        let options = LineOptions::default();
+        let options = LineOptions {
+            try_count: Some(3),
+            retry_duration: Some(std::time::Duration::from_secs(1)),
+            ..Default::default()
+        };
         let (response, header) = super::execute(&user_id, &channel_access_token, &options)
             .await
             .unwrap();

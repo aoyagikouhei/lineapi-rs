@@ -49,7 +49,6 @@ pub async fn execute(
     execute_api(|| build(&body, channel_access_token, options), options).await
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::messaging_api::LineOptions;
