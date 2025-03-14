@@ -1,5 +1,8 @@
 ## Changes
 
+### v0.2.2 (2025/03/14)
+#### Add Clone in ErrorResponse
+
 ### v0.2.1 (2025/03/14)
 #### Add get status code from Error
 

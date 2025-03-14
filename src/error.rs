@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::messaging_api::LineResponseHeader;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ErrorResponse {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -13,7 +13,7 @@ pub struct ErrorResponse {
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ErrorDetail {
     pub message: String,
     pub property: String,

@@ -4,7 +4,7 @@ use reqwest::{
     RequestBuilder, Response, StatusCode,
     header::{self, AUTHORIZATION},
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use crate::error::{Error, ErrorResponse};
@@ -19,14 +19,14 @@ const PREFIX_URL: &str = "https://api.line.me";
 const ENV_KEY: &str = "LINE_API_PREFIX_URL";
 const HEADER_RETRY_KEY: &str = "X-Line-Retry-Key";
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LineResponseHeader {
     pub request_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accepted_request_id: Option<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LineOptions {
     pub prefix_url: Option<String>,
     pub timeout_duration: Option<Duration>,
