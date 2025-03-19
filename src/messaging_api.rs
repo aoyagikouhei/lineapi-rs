@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::error::{Error, ErrorResponse};
 
+pub mod get_v2_bot_info;
 pub mod get_v2_bot_message_quote;
 pub mod get_v2_bot_message_quote_consumption;
 pub mod get_v2_bot_profile;

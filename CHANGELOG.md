@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.2.3 (2025/03/19)
+#### Add API
+- get_v2_bot_info
+
 ### v0.2.2 (2025/03/14)
 #### Add Clone in ErrorResponse
 
