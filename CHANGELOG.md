@@ -1,5 +1,8 @@
 ## Changes
 
+### v0.2.4 (2025/03/19)
+#### Add Enum to_string
+
 ### v0.2.3 (2025/03/19)
 #### Add API
 - get_v2_bot_info

@@ -1,5 +1,6 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
+use strum::Display;
 
 use crate::error::Error;
 
@@ -8,7 +9,7 @@ use super::{LineOptions, LineResponseHeader, apply_auth, apply_timeout, execute_
 // https://developers.line.biz/ja/reference/messaging-api/#get-bot-info
 const URL: &str = "/v2/bot/info";
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display)]
 pub enum ChatMode {
     #[serde(rename = "chat")]
     Chat,
@@ -16,7 +17,7 @@ pub enum ChatMode {
     Bot,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display)]
 pub enum MarkAsReadMode {
     #[serde(rename = "auto")]
     Auto,
