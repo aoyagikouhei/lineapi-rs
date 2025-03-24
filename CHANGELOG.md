@@ -1,5 +1,8 @@
 ## Changes
 
+### v0.2.6 (2025/03/24)
+#### Modify timeout is_zero
+
 ### v0.2.5 (2025/03/24)
 #### Modify Exponential Backoff add Jitter 
 

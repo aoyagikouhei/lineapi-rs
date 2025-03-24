@@ -521,7 +521,7 @@ checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
 
 [[package]]
 name = "lineapi"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "rand",

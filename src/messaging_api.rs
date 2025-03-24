@@ -1,12 +1,12 @@
 use std::time::Duration;
 
+use rand::prelude::*;
 use reqwest::{
     RequestBuilder, Response, StatusCode,
     header::{self, AUTHORIZATION},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
-use rand::prelude::*;
 
 use crate::error::{Error, ErrorResponse};
 
@@ -66,7 +66,7 @@ pub fn apply_auth(builder: RequestBuilder, channel_access_token: &str) -> Reques
 
 pub fn apply_timeout(builder: RequestBuilder, options: &LineOptions) -> RequestBuilder {
     let timeout_duration = options.get_timeout_duration();
-    if timeout_duration.as_secs() == 0 {
+    if timeout_duration.is_zero() {
         builder
     } else {
         builder.timeout(timeout_duration)
@@ -117,7 +117,8 @@ where
                     res = Err(err);
                 } else if !retry_duration.is_zero() {
                     // リトライ間隔がある場合は待つ
-                    tokio::time::sleep(calc_retry_duration(retry_duration, i as u32, &mut rng)).await;
+                    tokio::time::sleep(calc_retry_duration(retry_duration, i as u32, &mut rng))
+                        .await;
                 }
             }
         }
