@@ -1,5 +1,8 @@
 ## Changes
 
+### v0.2.5 (2025/03/24)
+#### Modify Exponential Backoff add Jitter 
+
 ### v0.2.4 (2025/03/19)
 #### Add Enum to_string
 

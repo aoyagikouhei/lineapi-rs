@@ -6,6 +6,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
+use rand::prelude::*;
 
 use crate::error::{Error, ErrorResponse};
 
@@ -84,7 +85,8 @@ where
     let mut res = Err(Error::Invalid("fail loop".to_string()));
     let retry_key = Uuid::now_v7().to_string();
     let try_count = options.get_try_count();
-    let retry_duration = options.get_retry_duration();
+    let retry_duration: Duration = options.get_retry_duration();
+    let mut rng = StdRng::from_os_rng();
     for i in 0..try_count {
         // リクエスト準備
         let mut builder = f();
@@ -113,18 +115,24 @@ where
                 if i + 1 >= try_count {
                     // リトライ回数がオーバーしたので失敗にする
                     res = Err(err);
-                } else if retry_duration.as_secs() > 0 {
+                } else if !retry_duration.is_zero() {
                     // リトライ間隔がある場合は待つ
-                    // exponential backoff
-                    // 0の時1回、1の時2回、2の時4回、3の時8回
-                    let retry_count = 2u64.pow(i as u32) as u32;
-                    let retry_duration = retry_duration * retry_count;
-                    tokio::time::sleep(retry_duration).await;
+                    tokio::time::sleep(calc_retry_duration(retry_duration, i as u32, &mut rng)).await;
                 }
             }
         }
     }
     res
+}
+
+fn calc_retry_duration(retry_duration: Duration, try_count: u32, rng: &mut StdRng) -> Duration {
+    // Jistter
+    let jitter = Duration::from_millis(rng.random_range(0..100));
+
+    // exponential backoff
+    // 0の時1回、1の時2回、2の時4回、3の時8回
+    let retry_count = 2u64.pow(try_count) as u32;
+    retry_duration * retry_count + jitter
 }
 
 // LINE用のヘッダーを回収する
