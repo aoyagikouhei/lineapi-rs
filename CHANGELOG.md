@@ -1,5 +1,8 @@
 ## Changes
 
+### v0.3.0 (2025/04/25)
+#### Modify retry check
+
 ### v0.2.6 (2025/03/24)
 #### Modify timeout is_zero
 

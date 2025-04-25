@@ -50,6 +50,11 @@ impl LineOptions {
     }
 }
 
+pub fn is_standard_retry(status_code: StatusCode) -> bool {
+    status_code.is_server_error() ||
+    status_code == StatusCode::TOO_MANY_REQUESTS
+}
+
 pub fn make_url(postfix_url: &str, options: &LineOptions) -> String {
     let default_prefix_url = std::env::var(ENV_KEY).unwrap_or_else(|_| PREFIX_URL.to_string());
     let prefix_url = if let Some(prefix_url) = &options.prefix_url {
@@ -73,12 +78,14 @@ pub fn apply_timeout(builder: RequestBuilder, options: &LineOptions) -> RequestB
     }
 }
 
-pub async fn execute_api<T>(
+pub async fn execute_api<T, F>(
     f: impl Fn() -> RequestBuilder,
     options: &LineOptions,
+    is_retry: F
 ) -> Result<(T, LineResponseHeader), crate::error::Error>
 where
     T: DeserializeOwned,
+    F: Fn(StatusCode) -> bool,
 {
     // リトライ処理
     // https://developers.line.biz/ja/docs/messaging-api/retrying-api-request/#flow-of-api-request-retry
@@ -112,6 +119,14 @@ where
             }
             Err(err) => {
                 tracing::debug!("error: {:?}", err);
+                
+                // ステータスコードによってはリトライを行わない
+                if !is_retry(err.status_code().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)) {
+                    // リトライしない
+                    res = Err(err);
+                    break;
+                }
+
                 if i + 1 >= try_count {
                     // リトライ回数がオーバーしたので失敗にする
                     res = Err(err);

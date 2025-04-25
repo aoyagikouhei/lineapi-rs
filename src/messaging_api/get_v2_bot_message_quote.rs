@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 
-use super::{LineOptions, LineResponseHeader, apply_auth, apply_timeout, execute_api, make_url};
+use super::{apply_auth, apply_timeout, execute_api, is_standard_retry, make_url, LineOptions, LineResponseHeader};
 
 // https://developers.line.biz/ja/reference/messaging-api/#get-quota
 const URL: &str = "/v2/bot/message/quota";
@@ -30,7 +30,7 @@ pub async fn execute(
     channel_access_token: &str,
     options: &LineOptions,
 ) -> Result<(ResponseBody, LineResponseHeader), Error> {
-    execute_api(|| build(channel_access_token, options), options).await
+    execute_api(|| build(channel_access_token, options), options, is_standard_retry).await
 }
 
 #[cfg(test)]
