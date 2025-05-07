@@ -47,14 +47,14 @@ pub struct Overview {
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     pub seq: u64,
-    pub impression: u64,
-    pub unique_impression: u64,
-    pub media_played: u64,
+    pub impression: Option<u64>,
+    pub unique_impression: Option<u64>,
+    pub media_played: Option<u64>,
     pub media_played25_percent: Option<u64>,
     pub media_played50_percent: Option<u64>,
     pub media_played75_percent: Option<u64>,
     pub media_played100_percent: Option<u64>,
-    pub unique_media_played: u64,
+    pub unique_media_played: Option<u64>,
     pub unique_media_played25_percent: Option<u64>,
     pub unique_media_played50_percent: Option<u64>,
     pub unique_media_played75_percent: Option<u64>,
@@ -67,8 +67,8 @@ pub struct Message {
 #[serde(rename_all = "camelCase")]
 pub struct Click {
     pub seq: u64,
-    pub url: String,
-    pub click: u64,
+    pub url: Option<String>,
+    pub click: Option<u64>,
     pub unique_click: Option<u64>,
     pub unique_click_of_request: Option<u64>,
     #[serde(flatten)]
