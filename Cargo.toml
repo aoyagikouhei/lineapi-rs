@@ -1,6 +1,6 @@
 [package]
 name = "lineapi"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["aoyagikouhei <aoyagi.kouhei@gmail.com>"]
 license = "MIT"
 edition = "2024"
@@ -12,6 +12,9 @@ readme = "README.md"
 documentation = "https://docs.rs/lineapi"
 
 [dependencies]
+async-stream = "0.3.6"
+chrono = { version = "0.4", features = [ "serde" ] }
+futures-util = "0.3.31"
 rand = "0.9"
 reqwest = { version = "0.12", features = ["json", "multipart"], default-features = false, optional = true }
 serde = { version = "1", features = ["derive"] }

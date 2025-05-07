@@ -3,15 +3,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 
-use super::{apply_auth, apply_timeout, execute_api, is_standard_retry, make_url, LineOptions, LineResponseHeader};
+use super::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, execute_api, is_standard_retry,
+    make_url,
+};
 
+// https://developers.line.biz/ja/docs/messaging-api/unit-based-statistics-aggregation/
 // https://developers.line.biz/ja/reference/messaging-api/#send-push-message
 const URL: &str = "/v2/bot/message/push";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct RequestBody {
     pub to: String,
     pub messages: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_aggregation_units: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,7 +59,12 @@ pub async fn execute(
     channel_access_token: &str,
     options: &LineOptions,
 ) -> Result<(ResponseBody, LineResponseHeader), Error> {
-    execute_api(|| build(&body, channel_access_token, options), options, is_standard_retry).await
+    execute_api(
+        || build(&body, channel_access_token, options),
+        options,
+        is_standard_retry,
+    )
+    .await
 }
 
 #[cfg(test)]
@@ -69,8 +81,9 @@ mod tests {
             to: user_id,
             messages: vec![serde_json::json!({
                 "type": "text",
-                "text": "Hello, world!"
+                "text": "Hello, world! http://www.yahoo.co.jp"
             })],
+            custom_aggregation_units: Some(vec!["promotion_a".to_owned()]),
         };
         let (response, header) = super::execute(body, &channel_access_token, &options)
             .await

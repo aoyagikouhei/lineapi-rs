@@ -11,6 +11,9 @@ use uuid::Uuid;
 use crate::error::{Error, ErrorResponse};
 
 pub mod get_v2_bot_info;
+pub mod get_v2_bot_insight_message_event_aggregation;
+pub mod get_v2_bot_message_aggregation_info;
+pub mod get_v2_bot_message_aggregation_list;
 pub mod get_v2_bot_message_quote;
 pub mod get_v2_bot_message_quote_consumption;
 pub mod get_v2_bot_profile;
@@ -51,8 +54,7 @@ impl LineOptions {
 }
 
 pub fn is_standard_retry(status_code: StatusCode) -> bool {
-    status_code.is_server_error() ||
-    status_code == StatusCode::TOO_MANY_REQUESTS
+    status_code.is_server_error() || status_code == StatusCode::TOO_MANY_REQUESTS
 }
 
 pub fn make_url(postfix_url: &str, options: &LineOptions) -> String {
@@ -81,7 +83,7 @@ pub fn apply_timeout(builder: RequestBuilder, options: &LineOptions) -> RequestB
 pub async fn execute_api<T, F>(
     f: impl Fn() -> RequestBuilder,
     options: &LineOptions,
-    is_retry: F
+    is_retry: F,
 ) -> Result<(T, LineResponseHeader), crate::error::Error>
 where
     T: DeserializeOwned,
@@ -119,9 +121,12 @@ where
             }
             Err(err) => {
                 tracing::debug!("error: {:?}", err);
-                
+
                 // ステータスコードによってはリトライを行わない
-                if !is_retry(err.status_code().unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)) {
+                if !is_retry(
+                    err.status_code()
+                        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                ) {
                     // リトライしない
                     res = Err(err);
                     break;

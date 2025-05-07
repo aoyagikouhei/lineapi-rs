@@ -1,43 +1,19 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
-use strum::Display;
-
-use crate::error::Error;
 
 use super::{
     LineOptions, LineResponseHeader, apply_auth, apply_timeout, execute_api, is_standard_retry,
     make_url,
 };
+use crate::error::Error;
 
-// https://developers.line.biz/ja/reference/messaging-api/#get-bot-info
-const URL: &str = "/v2/bot/info";
+// https://developers.line.biz/ja/reference/messaging-api/#get-the-number-of-unit-name-types-assigned-during-this-month
+const URL: &str = "/v2/bot/message/aggregation/info";
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display)]
-pub enum ChatMode {
-    #[serde(rename = "chat")]
-    Chat,
-    #[serde(rename = "bot")]
-    Bot,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display)]
-pub enum MarkAsReadMode {
-    #[serde(rename = "auto")]
-    Auto,
-    #[serde(rename = "manual")]
-    Manual,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseBody {
-    pub user_id: String,
-    pub basic_id: String,
-    pub premium_id: Option<String>,
-    pub display_name: String,
-    pub picture_url: Option<String>,
-    pub chat_mode: ChatMode,
-    pub mark_as_read_mode: MarkAsReadMode,
+    pub num_of_custom_aggregation_units: u64,
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
@@ -65,24 +41,11 @@ pub async fn execute(
 
 #[cfg(test)]
 mod tests {
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
     use crate::messaging_api::LineOptions;
 
-    // CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_get_v2_bot_info -- --nocapture --test-threads=1
+    // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_info -- --nocapture --test-threads=1
     #[tokio::test]
-    async fn test_messaging_api_get_v2_bot_info() {
-        let subscriber = FmtSubscriber::builder()
-            // all spans/events with a level higher than TRACE (e.g, debug, info, warn, etc.)
-            // will be written to stdout.
-            .with_max_level(Level::DEBUG)
-            // completes the builder.
-            .finish();
-
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
-
+    async fn test_get_v2_bot_message_aggregation_info() {
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
         let options = LineOptions {
             try_count: Some(3),

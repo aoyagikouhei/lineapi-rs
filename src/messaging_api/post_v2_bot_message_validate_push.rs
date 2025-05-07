@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 
-use super::{apply_auth, apply_timeout, execute_api, is_standard_retry, make_url, LineOptions, LineResponseHeader};
+use super::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, execute_api, is_standard_retry,
+    make_url,
+};
 
 // https://developers.line.biz/ja/reference/messaging-api/#validate-message-objects-of-push-message
 const URL: &str = "/v2/bot/message/validate/push";
@@ -31,7 +34,12 @@ pub async fn execute(
     channel_access_token: &str,
     options: &LineOptions,
 ) -> Result<(serde_json::Value, LineResponseHeader), Error> {
-    execute_api(|| build(&body, channel_access_token, options), options, is_standard_retry).await
+    execute_api(
+        || build(&body, channel_access_token, options),
+        options,
+        is_standard_retry,
+    )
+    .await
 }
 
 #[cfg(test)]

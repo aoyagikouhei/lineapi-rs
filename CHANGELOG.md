@@ -1,5 +1,13 @@
 ## Changes
 
+### v0.4.0 (2025/05/8)
+#### Modify post_v2_bot_message_push
+- add custom_aggregation_units
+#### Add APIs
+- get_v2_bot_insight_message_event_aggregation
+- get_v2_bot_message_aggregation_info
+- get_v2_bot_message_aggregation_list
+
 ### v0.3.0 (2025/04/25)
 #### Modify retry check
 
