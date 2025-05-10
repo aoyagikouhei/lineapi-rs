@@ -1,9 +1,12 @@
 ## Changes
 
-### v0.4.1 (2025/05/8)
+### v0.4.2 (2025/05/10)
+#### Modify post_v2_bot_message_push add notification_disabled
+
+### v0.4.1 (2025/05/08)
 #### Modify get_v2_bot_insight_message_event_aggregation response
 
-### v0.4.0 (2025/05/8)
+### v0.4.0 (2025/05/08)
 #### Modify post_v2_bot_message_push
 - add custom_aggregation_units
 #### Add APIs

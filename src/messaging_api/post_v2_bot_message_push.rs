@@ -8,7 +8,6 @@ use super::{
     make_url,
 };
 
-// https://developers.line.biz/ja/docs/messaging-api/unit-based-statistics-aggregation/
 // https://developers.line.biz/ja/reference/messaging-api/#send-push-message
 const URL: &str = "/v2/bot/message/push";
 
@@ -18,7 +17,32 @@ pub struct RequestBody {
     pub to: String,
     pub messages: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub notification_disabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_aggregation_units: Option<Vec<String>>,
+}
+
+impl RequestBody {
+    pub fn new(to: &str, messages: Vec<serde_json::Value>) -> Result<Self, Error> {
+        if to.is_empty() {
+            return Err(Error::Invalid(format!("to is empty")));
+        }
+        if messages.is_empty() {
+            return Err(Error::Invalid(format!("messages is empty")));
+        }
+        if messages.len() > 5 {
+            return Err(Error::Invalid(format!(
+                "messages is too long: {}",
+                messages.len()
+            )));
+        }
+        Ok(Self {
+            to: to.to_string(),
+            messages,
+            notification_disabled: None,
+            custom_aggregation_units: None,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,14 +101,12 @@ mod tests {
         let user_id = std::env::var("USER_ID").unwrap();
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
         let options = LineOptions::default();
-        let body = super::RequestBody {
-            to: user_id,
-            messages: vec![serde_json::json!({
-                "type": "text",
-                "text": "Hello, world! http://www.yahoo.co.jp"
-            })],
-            custom_aggregation_units: Some(vec!["promotion_a".to_owned()]),
-        };
+        let mut body = super::RequestBody::new(&user_id, vec![serde_json::json!({
+            "type": "text",
+            "text": "Hello, world! http://www.yahoo.co.jp"
+        })]).unwrap();
+        body.notification_disabled = Some(true);
+        body.custom_aggregation_units = Some(vec!["promotion_a".to_owned()]);
         let (response, header) = super::execute(body, &channel_access_token, &options)
             .await
             .unwrap();
