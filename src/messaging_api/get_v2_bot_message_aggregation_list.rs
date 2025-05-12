@@ -1,3 +1,5 @@
+use std::vec;
+
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +10,7 @@ use super::{
 use crate::error::Error;
 
 use async_stream::try_stream;
-use futures_util::Stream;
+use futures_util::{pin_mut, stream::TryStreamExt, Stream};
 
 // https://developers.line.biz/ja/reference/messaging-api/#get-a-list-of-unit-names-assigned-during-this-month
 const URL: &str = "/v2/bot/message/aggregation/list";
@@ -70,14 +72,13 @@ pub async fn execute(
 }
 
 pub fn make_stream(
-    query_params: &QueryParams,
     channel_access_token: &str,
     options: &LineOptions,
     max_page_count: u64,
 ) -> impl Stream<Item = Result<String, Error>> {
     try_stream! {
-        let mut query_params = query_params.clone();
         let mut current_page_count = 0;
+        let mut query_params = QueryParams::new("");
         loop {
             // 通常のAPI呼び出し
             let (result, _) = execute(&query_params, channel_access_token, options).await?;
@@ -109,41 +110,45 @@ pub fn make_stream(
     }
 }
 
+pub async fn execute_stream(
+    channel_access_token: &str,
+    options: &LineOptions,
+    max_page_count: u64,
+) -> Result<Vec<String>, Error> {
+    let stream = self::make_stream(&channel_access_token, &options, max_page_count);
+    pin_mut!(stream); // おまじない
+    let mut result = vec![];
+    loop {
+        match stream.try_next().await? {
+            Some(item) => {
+                result.push(item);
+            }
+            None => {
+                break;
+            }
+        }
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
-    use futures_util::{pin_mut, stream::TryStreamExt};
-
-    use crate::messaging_api::LineOptions;
+    use crate::messaging_api::{get_v2_bot_message_aggregation_list::execute_stream, LineOptions};
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_list -- --nocapture --test-threads=1
     #[tokio::test]
     async fn test_get_v2_bot_message_aggregation_list() {
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
-        let query_params = super::QueryParams::new("");
         let options = LineOptions {
             try_count: Some(3),
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        let stream = super::make_stream(&query_params, &channel_access_token, &options, 100);
-        pin_mut!(stream); // おまじない
-
-        loop {
-            match stream.try_next().await {
-                Ok(item) => match item {
-                    Some(item) => {
-                        println!("item: {}", item);
-                    }
-                    None => {
-                        println!("no more items");
-                        break;
-                    }
-                },
-                Err(e) => {
-                    println!("error: {}", e);
-                    break;
-                }
-            }
-        }
+        let res = execute_stream(
+            &channel_access_token,
+            &options,
+            100,
+        ).await.unwrap();
+        println!("res: {:?}", res);
     }
 }

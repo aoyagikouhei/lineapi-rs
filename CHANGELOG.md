@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.5.1 (2025/05/13)
+#### Modify
+- add execute_stream in get_v2_bot_message_aggregation_list.
+
 ### v0.5.0 (2025/05/12)
 #### Breaking Change
 - Message fields in get_v2_bot_insight_message_event_aggregation.
