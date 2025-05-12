@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.5.0 (2025/05/12)
+#### Breaking Change
+- Message fields in get_v2_bot_insight_message_event_aggregation.
+
 ### v0.4.2 (2025/05/10)
 #### Modify post_v2_bot_message_push add notification_disabled
 
