@@ -10,7 +10,7 @@ use super::{
 use crate::error::Error;
 
 use async_stream::try_stream;
-use futures_util::{pin_mut, stream::TryStreamExt, Stream};
+use futures_util::{Stream, pin_mut, stream::TryStreamExt};
 
 // https://developers.line.biz/ja/reference/messaging-api/#get-a-list-of-unit-names-assigned-during-this-month
 const URL: &str = "/v2/bot/message/aggregation/list";
@@ -115,25 +115,18 @@ pub async fn execute_stream(
     options: &LineOptions,
     max_page_count: u64,
 ) -> Result<Vec<String>, Error> {
-    let stream = self::make_stream(&channel_access_token, &options, max_page_count);
+    let stream = self::make_stream(channel_access_token, options, max_page_count);
     pin_mut!(stream); // おまじない
     let mut result = vec![];
-    loop {
-        match stream.try_next().await? {
-            Some(item) => {
-                result.push(item);
-            }
-            None => {
-                break;
-            }
-        }
+    while let Some(item) = stream.try_next().await? {
+        result.push(item);
     }
     Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::messaging_api::{get_v2_bot_message_aggregation_list::execute_stream, LineOptions};
+    use crate::messaging_api::{LineOptions, get_v2_bot_message_aggregation_list::execute_stream};
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_list -- --nocapture --test-threads=1
     #[tokio::test]
@@ -144,11 +137,9 @@ mod tests {
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        let res = execute_stream(
-            &channel_access_token,
-            &options,
-            100,
-        ).await.unwrap();
+        let res = execute_stream(&channel_access_token, &options, 100)
+            .await
+            .unwrap();
         println!("res: {:?}", res);
     }
 }

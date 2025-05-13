@@ -23,18 +23,18 @@ pub struct RequestBody {
 }
 
 impl RequestBody {
-    pub fn new(to: &str, messages: Vec<serde_json::Value>) -> Result<Self, Error> {
+    pub fn new(to: &str, messages: Vec<serde_json::Value>) -> Result<Self, Box<Error>> {
         if to.is_empty() {
-            return Err(Error::Invalid(format!("to is empty")));
+            return Err(Box::new(Error::Invalid("to is empty".to_string())));
         }
         if messages.is_empty() {
-            return Err(Error::Invalid(format!("messages is empty")));
+            return Err(Box::new(Error::Invalid("messages is empty".to_string())));
         }
         if messages.len() > 5 {
-            return Err(Error::Invalid(format!(
+            return Err(Box::new(Error::Invalid(format!(
                 "messages is too long: {}",
                 messages.len()
-            )));
+            ))));
         }
         Ok(Self {
             to: to.to_string(),
@@ -101,10 +101,14 @@ mod tests {
         let user_id = std::env::var("USER_ID").unwrap();
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
         let options = LineOptions::default();
-        let mut body = super::RequestBody::new(&user_id, vec![serde_json::json!({
-            "type": "text",
-            "text": "Hello, world! http://www.yahoo.co.jp"
-        })]).unwrap();
+        let mut body = super::RequestBody::new(
+            &user_id,
+            vec![serde_json::json!({
+                "type": "text",
+                "text": "Hello, world! http://www.yahoo.co.jp"
+            })],
+        )
+        .unwrap();
         body.notification_disabled = Some(true);
         body.custom_aggregation_units = Some(vec!["promotion_a".to_owned()]);
         let (response, header) = super::execute(body, &channel_access_token, &options)
