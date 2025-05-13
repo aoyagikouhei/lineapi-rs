@@ -38,7 +38,7 @@ pub struct Overview {
     pub unique_impression: Option<u64>,
     pub unique_click: Option<u64>,
     pub unique_media_played: Option<u64>,
-    pub unique_media_played100_percent: Option<u64>,
+    pub unique_media_played_100_percent: Option<u64>,
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
