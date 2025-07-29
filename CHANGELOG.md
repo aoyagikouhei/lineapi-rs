@@ -1,5 +1,13 @@
 ## Changes
 
+### v0.6.0 (2025/07/30)
+#### New Features
+- add line_login
+
+#### Breaking Change
+- move LineOptions to lib
+- change visibility common functions
+
 ### v0.5.2 (2025/05/13)
 #### Modify
 - rename unique_media_played_100_percent in get_v2_bot_insight_message_event_aggregation.
