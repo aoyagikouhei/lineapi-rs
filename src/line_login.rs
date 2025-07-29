@@ -8,6 +8,8 @@ use serde::de::DeserializeOwned;
 
 use crate::{calc_retry_duration, error::{Error, ErrorResponse}, execute_api_raw, LineOptions, LineResponseHeader};
 
+pub mod get_v2_profile;
+
 pub async fn execute_api<T, F>(
     f: impl Fn() -> RequestBuilder,
     options: &LineOptions,
