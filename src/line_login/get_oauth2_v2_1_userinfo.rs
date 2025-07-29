@@ -64,7 +64,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::{line_login::get_oauth2_v2_1_userinfo, LineOptions};
 
     // ACCESS_TOKEN=xxx cargo test test_line_login_get_oauth2_v2_1_userinfo -- --nocapture --test-threads=1
     #[tokio::test]
@@ -84,14 +84,14 @@ mod tests {
         };
         
         // Test GET method
-        let (response, header) = super::execute_get(&access_token, &options)
+        let (response, header) = get_oauth2_v2_1_userinfo::execute_get(&access_token, &options)
             .await
             .unwrap();
         println!("GET Response: {}", serde_json::to_value(&response).unwrap());
         println!("GET Header: {:?}", header);
         
         // Test POST method
-        let (response, header) = super::execute_post(&access_token, &options)
+        let (response, header) = get_oauth2_v2_1_userinfo::execute_post(&access_token, &options)
             .await
             .unwrap();
         println!("POST Response: {}", serde_json::to_value(&response).unwrap());

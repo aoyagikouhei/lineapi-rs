@@ -9,8 +9,8 @@ use serde::de::DeserializeOwned;
 use crate::{calc_retry_duration, error::{Error, ErrorResponse}, execute_api_raw, LineOptions, LineResponseHeader};
 
 pub mod get_v2_profile;
-#[path = "line_login/get_oauth2_v2.1_userinfo.rs"]
 pub mod get_oauth2_v2_1_userinfo;
+pub mod post_oauth2_v2_1_verify;
 
 pub async fn execute_api<T, F>(
     f: impl Fn() -> RequestBuilder,
