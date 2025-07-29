@@ -2,7 +2,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::messaging_api::LineResponseHeader;
+use crate::LineResponseHeader;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ErrorResponse {

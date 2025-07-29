@@ -2,24 +2,11 @@ use std::time::Duration;
 
 use rand::prelude::*;
 use reqwest::{
-    RequestBuilder, StatusCode,
+    RequestBuilder, StatusCode
 };
 use serde::de::DeserializeOwned;
-use uuid::Uuid;
 
 use crate::{calc_retry_duration, error::{Error, ErrorResponse}, execute_api_raw, LineOptions, LineResponseHeader};
-
-pub mod get_v2_bot_info;
-pub mod get_v2_bot_insight_message_event_aggregation;
-pub mod get_v2_bot_message_aggregation_info;
-pub mod get_v2_bot_message_aggregation_list;
-pub mod get_v2_bot_message_quote;
-pub mod get_v2_bot_message_quote_consumption;
-pub mod get_v2_bot_profile;
-pub mod post_v2_bot_message_push;
-pub mod post_v2_bot_message_validate_push;
-
-const HEADER_RETRY_KEY: &str = "X-Line-Retry-Key";
 
 pub async fn execute_api<T, F>(
     f: impl Fn() -> RequestBuilder,
@@ -31,21 +18,14 @@ where
     F: Fn(StatusCode) -> bool,
 {
     // リトライ処理
-    // https://developers.line.biz/ja/docs/messaging-api/retrying-api-request/#flow-of-api-request-retry
     let mut res = Err(Error::Invalid("fail loop".to_string()));
-    let retry_key = Uuid::now_v7().to_string();
     let try_count = options.get_try_count();
     let retry_duration: Duration = options.get_retry_duration();
     let mut rng = StdRng::from_os_rng();
     for i in 0..try_count {
         // リクエスト準備
-        let mut builder = f();
-        // リトライ処理はtry_countが1以上の場合のみ
-        if try_count > 1 {
-            // リトライ回数がある場合はリトライキーをヘッダーに追加
-            builder = builder.header(HEADER_RETRY_KEY, &retry_key);
-        }
-        match execute_api_raw(builder, true).await {
+        let builder = f();
+        match execute_api_raw(builder, false).await {
             Ok((json, line_header, status_code)) => {
                 res = match serde_json::from_value(json.clone()) {
                     // フォーマットがあっている
