@@ -1,11 +1,7 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    LineOptions, LineResponseHeader, apply_auth, apply_timeout, execute_api, is_standard_retry,
-    make_url,
-};
-use crate::error::Error;
+use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, messaging_api::execute_api, LineOptions, LineResponseHeader};
 
 // https://developers.line.biz/ja/reference/messaging-api/#get-the-number-of-unit-name-types-assigned-during-this-month
 const URL: &str = "/v2/bot/message/aggregation/info";

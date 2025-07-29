@@ -3,11 +3,7 @@ use std::vec;
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    LineOptions, LineResponseHeader, apply_auth, apply_timeout, execute_api, is_standard_retry,
-    make_url,
-};
-use crate::error::Error;
+use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, messaging_api::execute_api, LineOptions, LineResponseHeader};
 
 use async_stream::try_stream;
 use futures_util::{Stream, pin_mut, stream::TryStreamExt};
