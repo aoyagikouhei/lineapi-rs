@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_timeout, error::Error, is_standard_retry, make_url, line_login::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_timeout, error::Error, execute_api, is_standard_retry,
+    make_url,
+};
 
 // https://developers.line.biz/ja/reference/line-login/#verify-id-token
 const URL: &str = "/oauth2/v2.1/verify";
@@ -55,6 +58,7 @@ pub async fn execute(
         || build(request_body, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -64,7 +68,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::{line_login::post_oauth2_v2_1_verify, LineOptions};
+    use crate::{LineOptions, line_login::post_oauth2_v2_1_verify};
 
     // ID_TOKEN=xxx CLIENT_ID=xxx cargo test test_line_login_post_oauth2_v2_1_verify -- --nocapture --test-threads=1
     #[tokio::test]
@@ -78,24 +82,24 @@ mod tests {
 
         let id_token = std::env::var("ID_TOKEN").unwrap();
         let client_id = std::env::var("CLIENT_ID").unwrap();
-        
+
         let request_body = post_oauth2_v2_1_verify::RequestBody {
             id_token,
             client_id,
             nonce: None,
             user_id: None,
         };
-        
+
         let options = LineOptions {
             try_count: Some(3),
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        
+
         let (response, header) = post_oauth2_v2_1_verify::execute(&request_body, &options)
             .await
             .unwrap();
         println!("{}", serde_json::to_value(&response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }

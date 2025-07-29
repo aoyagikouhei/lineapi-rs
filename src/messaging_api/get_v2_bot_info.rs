@@ -2,7 +2,10 @@ use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, messaging_api::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, error::Error, execute_api,
+    is_standard_retry, make_url,
+};
 
 // https://developers.line.biz/ja/reference/messaging-api/#get-bot-info
 const URL: &str = "/v2/bot/info";
@@ -54,6 +57,7 @@ pub async fn execute(
         || build(channel_access_token, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -63,7 +67,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::messaging_api::LineOptions;
+    use crate::LineOptions;
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_get_v2_bot_info -- --nocapture --test-threads=1
     #[tokio::test]
@@ -88,6 +92,6 @@ mod tests {
             .await
             .unwrap();
         println!("{}", serde_json::to_value(response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }

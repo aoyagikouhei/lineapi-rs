@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, messaging_api::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, error::Error, execute_api,
+    is_standard_retry, make_url,
+};
 use chrono::prelude::*;
 
 // https://developers.line.biz/ja/reference/messaging-api/#get-statistics-per-unit
@@ -102,13 +105,14 @@ pub async fn execute(
         || build(query_params, channel_access_token, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::messaging_api::LineOptions;
+    use crate::LineOptions;
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_insight_message_event_aggregation -- --nocapture --test-threads=1
     #[tokio::test]
@@ -124,6 +128,6 @@ mod tests {
             .await
             .unwrap();
         println!("{}", serde_json::to_value(response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }

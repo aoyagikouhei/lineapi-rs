@@ -3,7 +3,10 @@ use std::vec;
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, messaging_api::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, error::Error, execute_api,
+    is_standard_retry, make_url,
+};
 
 use async_stream::try_stream;
 use futures_util::{Stream, pin_mut, stream::TryStreamExt};
@@ -63,6 +66,7 @@ pub async fn execute(
         || build(query_params, channel_access_token, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -122,7 +126,7 @@ pub async fn execute_stream(
 
 #[cfg(test)]
 mod tests {
-    use crate::messaging_api::{LineOptions, get_v2_bot_message_aggregation_list::execute_stream};
+    use crate::{LineOptions, messaging_api::get_v2_bot_message_aggregation_list::execute_stream};
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_list -- --nocapture --test-threads=1
     #[tokio::test]
@@ -136,6 +140,6 @@ mod tests {
         let res = execute_stream(&channel_access_token, &options, 100)
             .await
             .unwrap();
-        println!("res: {:?}", res);
+        println!("res: {res:?}");
     }
 }

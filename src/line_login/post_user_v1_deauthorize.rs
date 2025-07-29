@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, line_login::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, error::Error, execute_api,
+    is_standard_retry, make_url,
+};
 
 // https://developers.line.biz/ja/reference/line-login/#deauthorize-app
 const URL: &str = "/user/v1/deauthorize";
@@ -19,7 +22,11 @@ pub struct ResponseBody {
     pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
-pub fn build(channel_access_token: &str, request_body: &RequestBody, options: &LineOptions) -> RequestBuilder {
+pub fn build(
+    channel_access_token: &str,
+    request_body: &RequestBody,
+    options: &LineOptions,
+) -> RequestBuilder {
     let url = make_url(URL, options);
     let client = reqwest::Client::new();
     let mut request_builder = client.post(&url);
@@ -38,6 +45,7 @@ pub async fn execute(
         || build(channel_access_token, request_body, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -72,17 +80,18 @@ mod tests {
 
         let channel_access_token = std::env::var("CHANNEL_ACCESS_TOKEN").unwrap();
         let user_access_token = std::env::var("USER_ACCESS_TOKEN").unwrap();
-        
+
         let options = LineOptions {
             try_count: Some(3),
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        
-        let (response, header) = super::execute_simple(&channel_access_token, &user_access_token, &options)
-            .await
-            .unwrap();
+
+        let (response, header) =
+            super::execute_simple(&channel_access_token, &user_access_token, &options)
+                .await
+                .unwrap();
         println!("{}", serde_json::to_value(&response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }

@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_timeout, error::Error, is_standard_retry, make_url, line_login::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_timeout, error::Error, execute_api, is_standard_retry,
+    make_url,
+};
 
 // https://developers.line.biz/ja/reference/line-login/#issue-access-token
 const URL: &str = "/oauth2/v2.1/token";
@@ -57,6 +60,7 @@ pub async fn execute(
         || build(request_body, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -114,18 +118,25 @@ mod tests {
         let redirect_uri = std::env::var("REDIRECT_URI").unwrap();
         let client_id = std::env::var("CLIENT_ID").unwrap();
         let client_secret = std::env::var("CLIENT_SECRET").unwrap();
-        
+
         let options = LineOptions {
             try_count: Some(3),
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        
-        let (response, header) = super::execute_authorization_code(&code, &redirect_uri, &client_id, &client_secret, None, &options)
-            .await
-            .unwrap();
+
+        let (response, header) = super::execute_authorization_code(
+            &code,
+            &redirect_uri,
+            &client_id,
+            &client_secret,
+            None,
+            &options,
+        )
+        .await
+        .unwrap();
         println!("{}", serde_json::to_value(&response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 
     // REFRESH_TOKEN=xxx CLIENT_ID=xxx CLIENT_SECRET=xxx cargo test test_line_login_post_oauth2_v2_1_token_refresh_token -- --nocapture --test-threads=1
@@ -141,17 +152,18 @@ mod tests {
         let refresh_token = std::env::var("REFRESH_TOKEN").unwrap();
         let client_id = std::env::var("CLIENT_ID").unwrap();
         let client_secret = std::env::var("CLIENT_SECRET").ok();
-        
+
         let options = LineOptions {
             try_count: Some(3),
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        
-        let (response, header) = super::execute_refresh_token(&refresh_token, &client_id, client_secret, &options)
-            .await
-            .unwrap();
+
+        let (response, header) =
+            super::execute_refresh_token(&refresh_token, &client_id, client_secret, &options)
+                .await
+                .unwrap();
         println!("{}", serde_json::to_value(&response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }

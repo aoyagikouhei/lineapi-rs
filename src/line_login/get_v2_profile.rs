@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, line_login::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, error::Error, execute_api,
+    is_standard_retry, make_url,
+};
 
 // https://developers.line.biz/ja/reference/line-login/#get-user-profile
 const URL: &str = "/v2/profile";
@@ -36,6 +39,7 @@ pub async fn execute(
         || build(access_token, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -63,10 +67,8 @@ mod tests {
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        let (response, header) = super::execute(&access_token, &options)
-            .await
-            .unwrap();
+        let (response, header) = super::execute(&access_token, &options).await.unwrap();
         println!("{}", serde_json::to_value(response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }

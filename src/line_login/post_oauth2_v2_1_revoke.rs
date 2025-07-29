@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_timeout, error::Error, is_standard_retry, make_url, line_login::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_timeout, error::Error, execute_api, is_standard_retry,
+    make_url,
+};
 
 // https://developers.line.biz/ja/reference/line-login/#revoke-access-token
 const URL: &str = "/oauth2/v2.1/revoke";
@@ -38,6 +41,7 @@ pub async fn execute(
         || build(request_body, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -76,17 +80,18 @@ mod tests {
         let access_token = std::env::var("ACCESS_TOKEN").unwrap();
         let client_id = std::env::var("CLIENT_ID").unwrap();
         let client_secret = std::env::var("CLIENT_SECRET").ok();
-        
+
         let options = LineOptions {
             try_count: Some(3),
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        
-        let (response, header) = super::execute_simple(&access_token, &client_id, client_secret, &options)
-            .await
-            .unwrap();
+
+        let (response, header) =
+            super::execute_simple(&access_token, &client_id, client_secret, &options)
+                .await
+                .unwrap();
         println!("{}", serde_json::to_value(&response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }

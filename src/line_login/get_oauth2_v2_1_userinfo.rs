@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_auth, apply_timeout, error::Error, is_standard_retry, make_url, line_login::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_auth, apply_timeout, error::Error, execute_api,
+    is_standard_retry, make_url,
+};
 
 // https://developers.line.biz/ja/reference/line-login/#userinfo
 const URL: &str = "/oauth2/v2.1/userinfo";
@@ -43,6 +46,7 @@ pub async fn execute_get(
         || build_get(access_token, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -55,6 +59,7 @@ pub async fn execute_post(
         || build_post(access_token, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -64,7 +69,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::{line_login::get_oauth2_v2_1_userinfo, LineOptions};
+    use crate::{LineOptions, line_login::get_oauth2_v2_1_userinfo};
 
     // ACCESS_TOKEN=xxx cargo test test_line_login_get_oauth2_v2_1_userinfo -- --nocapture --test-threads=1
     #[tokio::test]
@@ -82,19 +87,22 @@ mod tests {
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        
+
         // Test GET method
         let (response, header) = get_oauth2_v2_1_userinfo::execute_get(&access_token, &options)
             .await
             .unwrap();
         println!("GET Response: {}", serde_json::to_value(&response).unwrap());
-        println!("GET Header: {:?}", header);
-        
+        println!("GET Header: {header:?}");
+
         // Test POST method
         let (response, header) = get_oauth2_v2_1_userinfo::execute_post(&access_token, &options)
             .await
             .unwrap();
-        println!("POST Response: {}", serde_json::to_value(&response).unwrap());
-        println!("POST Header: {:?}", header);
+        println!(
+            "POST Response: {}",
+            serde_json::to_value(&response).unwrap()
+        );
+        println!("POST Header: {header:?}");
     }
 }

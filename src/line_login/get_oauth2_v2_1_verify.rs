@@ -1,7 +1,10 @@
 use reqwest::RequestBuilder;
 use serde::{Deserialize, Serialize};
 
-use crate::{apply_timeout, error::Error, is_standard_retry, make_url, line_login::execute_api, LineOptions, LineResponseHeader};
+use crate::{
+    LineOptions, LineResponseHeader, apply_timeout, error::Error, execute_api, is_standard_retry,
+    make_url,
+};
 
 // https://developers.line.biz/ja/reference/line-login/#verify-access-token
 const URL: &str = "/oauth2/v2.1/verify";
@@ -32,6 +35,7 @@ pub async fn execute(
         || build(access_token, options),
         options,
         is_standard_retry,
+        false,
     )
     .await
 }
@@ -54,17 +58,15 @@ mod tests {
             .expect("setting default subscriber failed");
 
         let access_token = std::env::var("ACCESS_TOKEN").unwrap();
-        
+
         let options = LineOptions {
             try_count: Some(3),
             retry_duration: Some(std::time::Duration::from_secs(1)),
             ..Default::default()
         };
-        
-        let (response, header) = super::execute(&access_token, &options)
-            .await
-            .unwrap();
+
+        let (response, header) = super::execute(&access_token, &options).await.unwrap();
         println!("{}", serde_json::to_value(&response).unwrap());
-        println!("{:?}", header);
+        println!("{header:?}");
     }
 }
