@@ -1,5 +1,10 @@
 ## Changes
 
+### v0.6.1 (2025/07/30)
+#### New Features
+- add oauth_url
+- add examples oauth web
+
 ### v0.6.0 (2025/07/30)
 #### New Features
 - add line_login
