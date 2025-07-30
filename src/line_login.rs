@@ -39,31 +39,29 @@ pub fn oauth_url(
     code_verifier: Option<impl Into<String>>,
 ) -> Result<String, Error> {
     let mut url = Url::parse("https://access.line.me/oauth2/v2.1/authorize").unwrap();
-    let mut query_pairs_mut = url.query_pairs_mut();
-    query_pairs_mut
-        .append_pair("response_type", "code")
-        .append_pair("client_id", &client_id.into())
-        .append_pair("redirect_uri", &redirect_uri.into())
-        .append_pair("state", &state.into())
-        .append_pair("scope", &make_scope_string(scopes));
+    {
+        let mut query_pairs_mut = url.query_pairs_mut();
+        query_pairs_mut
+            .append_pair("response_type", "code")
+            .append_pair("client_id", &client_id.into())
+            .append_pair("redirect_uri", &redirect_uri.into())
+            .append_pair("state", &state.into())
+            .append_pair("scope", &make_scope_string(scopes));
 
-    if let Some(code_verifier) = code_verifier {
-        let code_verifier = code_verifier.into();
-        let size = code_verifier.len();
-        if !(43..=128).contains(&size) {
-            return Err(Error::Invalid(
-                "code_verifier is length invalid".to_string(),
-            ));
+        if let Some(code_verifier) = code_verifier {
+            let code_verifier = code_verifier.into();
+            if !(43..=128).contains(&code_verifier.len()) {
+                return Err(Error::Invalid(
+                    "code_verifier is length invalid".to_string(),
+                ));
+            }
+            let code_challenge = Sha256::digest(code_verifier.as_bytes());
+            let code_challenge =
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(code_challenge);
+            query_pairs_mut.append_pair("code_challenge", &code_challenge);
+            query_pairs_mut.append_pair("code_challenge_method", "S256");
         }
-        let code_challenge = Sha256::digest(code_verifier.as_bytes());
-        let code_challenge =
-            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(code_challenge);
-        query_pairs_mut.append_pair("code_challenge", &code_challenge);
-        query_pairs_mut.append_pair("code_challenge_method", "S256");
     }
-
-    // Explicitly drop the mutable borrow before using url
-    drop(query_pairs_mut);
     Ok(url.to_string())
 }
 
