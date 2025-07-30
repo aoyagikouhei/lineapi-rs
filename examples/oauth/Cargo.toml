@@ -1,0 +1,12 @@
+[package]
+name = "oauth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower-cookies = "0.11.0"
+lineapi = { path="../..", features = ["rustls-tls"] }
+uuid = { version = "1", features = ["v4", "serde", "v7"] }
