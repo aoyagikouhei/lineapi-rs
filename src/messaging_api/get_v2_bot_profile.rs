@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/messaging-api/#get-profile
 const URL: &str = "/v2/bot/profile";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseBody {
     pub display_name: String,

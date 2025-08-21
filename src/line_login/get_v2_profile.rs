@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/line-login/#get-user-profile
 const URL: &str = "/v2/profile";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseBody {
     pub user_id: String,

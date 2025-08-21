@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/line-login/#issue-access-token
 const URL: &str = "/oauth2/v2.1/token";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "grant_type")]
 pub enum RequestBody {
     #[serde(rename = "authorization_code")]
@@ -30,7 +30,7 @@ pub enum RequestBody {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseBody {
     pub access_token: String,
     pub expires_in: u64,

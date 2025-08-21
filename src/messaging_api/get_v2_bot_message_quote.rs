@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/messaging-api/#get-quota
 const URL: &str = "/v2/bot/message/quota";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseBody {
     #[serde(alias = "type")]
     pub type_code: String,
