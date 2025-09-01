@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/line-login/#verify-id-token
 const URL: &str = "/oauth2/v2.1/verify";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestBody {
     pub id_token: String,
     pub client_id: String,
@@ -19,7 +19,7 @@ pub struct RequestBody {
     pub user_id: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseBody {
     pub iss: String,
     pub sub: String,

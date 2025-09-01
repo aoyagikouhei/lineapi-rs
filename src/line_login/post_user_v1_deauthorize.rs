@@ -9,14 +9,14 @@ use crate::{
 // https://developers.line.biz/ja/reference/line-login/#deauthorize-app
 const URL: &str = "/user/v1/deauthorize";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestBody {
     #[serde(rename = "userAccessToken")]
     pub user_access_token: String,
 }
 
 // The response is empty for this endpoint (204 status)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseBody {
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,

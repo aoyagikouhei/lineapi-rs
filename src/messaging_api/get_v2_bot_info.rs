@@ -10,7 +10,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/messaging-api/#get-bot-info
 const URL: &str = "/v2/bot/info";
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display, Clone)]
 pub enum ChatMode {
     #[serde(rename = "chat")]
     Chat,
@@ -18,7 +18,7 @@ pub enum ChatMode {
     Bot,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Display, Clone)]
 pub enum MarkAsReadMode {
     #[serde(rename = "auto")]
     Auto,
@@ -26,7 +26,7 @@ pub enum MarkAsReadMode {
     Manual,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponseBody {
     pub user_id: String,

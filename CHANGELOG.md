@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.6.2 (2025/08/21)
+#### New Features
+- add Clone for request and response
+
 ### v0.6.1 (2025/07/30)
 #### New Features
 - add oauth_url

@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/line-login/#userinfo
 const URL: &str = "/oauth2/v2.1/userinfo";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseBody {
     pub sub: String,
     #[serde(skip_serializing_if = "Option::is_none")]

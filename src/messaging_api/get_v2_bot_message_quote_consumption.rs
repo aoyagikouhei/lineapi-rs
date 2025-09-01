@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/messaging-api/#get-consumption
 const URL: &str = "/v2/bot/message/quota/consumption";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseBody {
     #[serde(alias = "totalUsage")]
     pub total_usage: i64,

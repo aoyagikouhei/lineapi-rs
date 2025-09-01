@@ -9,7 +9,7 @@ use crate::{
 // https://developers.line.biz/ja/reference/line-login/#revoke-access-token
 const URL: &str = "/oauth2/v2.1/revoke";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RequestBody {
     pub access_token: String,
     pub client_id: String,
@@ -18,7 +18,7 @@ pub struct RequestBody {
 }
 
 // The response is empty for this endpoint
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResponseBody {
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
