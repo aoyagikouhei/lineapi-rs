@@ -7,5 +7,9 @@
 			"path": "examples/oauth"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"rust-analyzer.cargo.features": [
+			"mock"
+		]
+	}
 }

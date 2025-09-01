@@ -14,6 +14,9 @@ pub mod error;
 pub mod line_login;
 pub mod messaging_api;
 
+#[cfg(feature = "mock")]
+pub mod mock;
+
 const PREFIX_URL: &str = "https://api.line.me";
 const ENV_KEY: &str = "LINE_API_PREFIX_URL";
 
