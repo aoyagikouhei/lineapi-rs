@@ -26,13 +26,13 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         builder.status_code(200usize);
     }
     if builder.user_id.is_none() {
-        builder.user_id("U1234567890abcdef".to_string());
+        builder.user_id("U123456".to_string());
     }
     if builder.display_name.is_none() {
         builder.display_name("Test User".to_string());
     }
     if builder.error_message.is_none() {
-        builder.error_message("LINE API error".to_string());
+        builder.error_message("error occurred".to_string());
     }
     let params = builder.build().unwrap();
 
@@ -78,16 +78,12 @@ mod tests {
     async fn test_make_mock_get_v2_profile_success() {
         let mut server = Server::new_async().await;
         let mut builder = MockParamsBuilder::default();
-        builder.access_token("test_token");
-        builder.status_code(200usize);
-        builder.user_id("U123456");
-        builder.display_name("Test User");
         builder.picture_url(Some("https://example.com/picture.jpg".into()));
         builder.status_message(Some("I'm happy!".into()));
         let mock = make_mock(&mut server, Some(builder)).await;
 
         let res = get_v2_profile::execute(
-            "test_token",
+            "test_access_token",
             &LineOptions {
                 prefix_url: Some(server.url()),
                 ..Default::default()
@@ -112,13 +108,11 @@ mod tests {
     async fn test_make_mock_get_v2_profile_failure() {
         let mut server = Server::new_async().await;
         let mut builder = MockParamsBuilder::default();
-        builder.access_token("test_token");
         builder.status_code(400usize);
-        builder.error_message(Some("error occurred".into()));
         let mock = make_mock(&mut server, Some(builder)).await;
 
         let res = get_v2_profile::execute(
-            "test_token",
+            "test_access_token",
             &LineOptions {
                 prefix_url: Some(server.url()),
                 ..Default::default()
@@ -134,6 +128,94 @@ mod tests {
             _ => panic!("Unexpected response"),
         }
 
+        mock.assert_async().await;
+    }
+
+    // cargo test --all-features test_make_mock_get_v2_profile_raw_success -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_get_v2_profile_raw_success() {
+        // モック準備
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v2/profile")
+            .match_header(
+                "authorization",
+                "Bearer test_access_token",
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({
+                "userId": "U123456",
+                "displayName": "Test User",
+                "pictureUrl": "https://example.com/picture.jpg",
+                "statusMessage": "I'm happy!"
+            }).to_string())
+            .create_async()
+            .await;
+
+
+        let res = get_v2_profile::execute(
+            "test_access_token",
+            &LineOptions {
+                // APIの向き先をmockitoのサーバーに変更
+                prefix_url: Some(server.url()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res.0.user_id, "U123456");
+        assert_eq!(res.0.display_name, "Test User");
+        assert_eq!(
+            res.0.picture_url,
+            Some("https://example.com/picture.jpg".into())
+        );
+        assert_eq!(res.0.status_message, Some("I'm happy!".into()));
+
+        // モックが呼ばれたか確認
+        mock.assert_async().await;
+    }
+
+    // cargo test --all-features test_make_mock_get_v2_profile_raw_failure -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_get_v2_profile_raw_failure() {
+        // モック準備
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/v2/profile")
+            .match_header(
+                "authorization",
+                "Bearer test_access_token",
+            )
+            .with_status(400)
+            .with_header("content-type", "application/json")
+            .with_body(json!({
+                "message": "error occurred"
+            }).to_string())
+            .create_async()
+            .await;
+
+
+        let res = get_v2_profile::execute(
+            "test_access_token",
+            &LineOptions {
+                // APIの向き先をmockitoのサーバーに変更
+                prefix_url: Some(server.url()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        match res {
+            Err(Error::Line(response, status_code, _header)) => {
+                assert_eq!(status_code, 400);
+                assert_eq!(response.message, "error occurred");
+            }
+            _ => panic!("Unexpected response"),
+        }
+
+        // モックが呼ばれたか確認
         mock.assert_async().await;
     }
 }
