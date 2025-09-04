@@ -10,10 +10,7 @@ use serde_json::json;
 pub struct MockParams {
     pub access_token: String,
     pub status_code: usize,
-    pub user_id: String,
-    pub display_name: String,
-    pub picture_url: Option<String>,
-    pub status_message: Option<String>,
+    pub friend_flag: bool,
     pub error_message: Option<String>,
 }
 
@@ -25,11 +22,8 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     if builder.status_code.is_none() {
         builder.status_code(200usize);
     }
-    if builder.user_id.is_none() {
-        builder.user_id("U123456".to_string());
-    }
-    if builder.display_name.is_none() {
-        builder.display_name("Test User".to_string());
+    if builder.friend_flag.is_none() {
+        builder.friend_flag(false);
     }
     if builder.error_message.is_none() {
         builder.error_message("error occurred".to_string());
@@ -37,17 +31,9 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     let params = builder.build().unwrap();
 
     let body_json = if params.status_code == 200 {
-        let mut json = json!({
-            "userId": params.user_id,
-            "displayName": params.display_name,
-        });
-        if params.picture_url.is_some() {
-            json["pictureUrl"] = params.picture_url.clone().into();
-        }
-        if params.status_message.is_some() {
-            json["statusMessage"] = params.status_message.clone().into();
-        }
-        json
+        json!({
+            "friendFlag": params.friend_flag,
+        })
     } else {
         json!({
             "message": params.error_message
@@ -55,7 +41,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     };
 
     server
-        .mock("GET", "/v2/profile")
+        .mock("GET", "/friendship/v1/status")
         .match_header(
             "authorization",
             format!("Bearer {}", params.access_token).as_str(),
@@ -69,20 +55,19 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, line_login::get_v2_profile};
+    use crate::{LineOptions, error::Error, line_login::get_friendship_v1_status};
 
     use super::*;
 
-    // cargo test --all-features test_make_mock_get_v2_profile_success -- --nocapture --test-threads=1
+    // cargo test --all-features test_make_mock_get_friendship_v1_status_success -- --nocapture --test-threads=1
     #[tokio::test]
-    async fn test_make_mock_get_v2_profile_success() {
+    async fn test_make_mock_get_friendship_v1_status_success() {
         let mut server = Server::new_async().await;
         let mut builder = MockParamsBuilder::default();
-        builder.picture_url(Some("https://example.com/picture.jpg".into()));
-        builder.status_message(Some("I'm happy!".into()));
+        builder.friend_flag(true);
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let res = get_v2_profile::execute(
+        let res = get_friendship_v1_status::execute(
             "test_access_token",
             &LineOptions {
                 prefix_url: Some(server.url()),
@@ -92,26 +77,20 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(res.0.user_id, "U123456");
-        assert_eq!(res.0.display_name, "Test User");
-        assert_eq!(
-            res.0.picture_url,
-            Some("https://example.com/picture.jpg".into())
-        );
-        assert_eq!(res.0.status_message, Some("I'm happy!".into()));
+        assert_eq!(res.0.friend_flag, true);
 
         mock.assert_async().await;
     }
 
-    // cargo test --all-features test_make_mock_get_v2_profile_failure -- --nocapture --test-threads=1
+    // cargo test --all-features test_make_mock_get_friendship_v1_status_failure -- --nocapture --test-threads=1
     #[tokio::test]
-    async fn test_make_mock_get_v2_profile_failure() {
+    async fn test_make_mock_get_friendship_v1_status_failure() {
         let mut server = Server::new_async().await;
         let mut builder = MockParamsBuilder::default();
         builder.status_code(400usize);
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let res = get_v2_profile::execute(
+        let res = get_friendship_v1_status::execute(
             "test_access_token",
             &LineOptions {
                 prefix_url: Some(server.url()),

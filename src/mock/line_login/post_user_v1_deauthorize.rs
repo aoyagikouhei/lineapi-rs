@@ -8,82 +8,74 @@ use serde_json::json;
 #[builder(default)]
 #[builder(field(public))]
 pub struct MockParams {
-    pub access_token: String,
+    pub channel_access_token: String,
+    pub user_access_token: String,
     pub status_code: usize,
-    pub user_id: String,
-    pub display_name: String,
-    pub picture_url: Option<String>,
-    pub status_message: Option<String>,
     pub error_message: Option<String>,
 }
 
 pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) -> Mock {
     let mut builder = builder.unwrap_or_default();
-    if builder.access_token.is_none() {
-        builder.access_token("test_access_token".to_string());
+    if builder.channel_access_token.is_none() {
+        builder.channel_access_token("test_channel_access_token".to_string());
+    }
+    if builder.user_access_token.is_none() {
+        builder.user_access_token("test_user_access_token".to_string());
     }
     if builder.status_code.is_none() {
         builder.status_code(200usize);
-    }
-    if builder.user_id.is_none() {
-        builder.user_id("U123456".to_string());
-    }
-    if builder.display_name.is_none() {
-        builder.display_name("Test User".to_string());
     }
     if builder.error_message.is_none() {
         builder.error_message("error occurred".to_string());
     }
     let params = builder.build().unwrap();
 
-    let body_json = if params.status_code == 200 {
-        let mut json = json!({
-            "userId": params.user_id,
-            "displayName": params.display_name,
-        });
-        if params.picture_url.is_some() {
-            json["pictureUrl"] = params.picture_url.clone().into();
-        }
-        if params.status_message.is_some() {
-            json["statusMessage"] = params.status_message.clone().into();
-        }
-        json
+    let body_json = if params.status_code == 200 || params.status_code == 204 {
+        json!({}).to_string()
     } else {
         json!({
             "message": params.error_message
-        })
+        }).to_string()
     };
 
+    let expected_body = json!({
+        "userAccessToken": params.user_access_token.clone()
+    });
+
     server
-        .mock("GET", "/v2/profile")
+        .mock("POST", "/user/v1/deauthorize")
         .match_header(
             "authorization",
-            format!("Bearer {}", params.access_token).as_str(),
+            format!("Bearer {}", params.channel_access_token).as_str(),
         )
+        .match_body(mockito::Matcher::Json(expected_body))
         .with_status(params.status_code)
         .with_header("content-type", "application/json")
-        .with_body(body_json.to_string())
+        .with_body(body_json)
         .create_async()
         .await
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, line_login::get_v2_profile};
+    use crate::{LineOptions, error::Error, line_login::post_user_v1_deauthorize};
 
     use super::*;
 
-    // cargo test --all-features test_make_mock_get_v2_profile_success -- --nocapture --test-threads=1
+    // cargo test --all-features test_make_mock_post_user_v1_deauthorize_success -- --nocapture --test-threads=1
     #[tokio::test]
-    async fn test_make_mock_get_v2_profile_success() {
+    async fn test_make_mock_post_user_v1_deauthorize_success() {
         let mut server = Server::new_async().await;
-        let mut builder = MockParamsBuilder::default();
-        builder.picture_url(Some("https://example.com/picture.jpg".into()));
-        builder.status_message(Some("I'm happy!".into()));
+        let builder = MockParamsBuilder::default();
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let res = get_v2_profile::execute(
-            "test_access_token",
+        let request_body = post_user_v1_deauthorize::RequestBody {
+            user_access_token: "test_user_access_token".to_string(),
+        };
+
+        let res = post_user_v1_deauthorize::execute(
+            "test_channel_access_token",
+            &request_body,
             &LineOptions {
                 prefix_url: Some(server.url()),
                 ..Default::default()
@@ -92,27 +84,27 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(res.0.user_id, "U123456");
-        assert_eq!(res.0.display_name, "Test User");
-        assert_eq!(
-            res.0.picture_url,
-            Some("https://example.com/picture.jpg".into())
-        );
-        assert_eq!(res.0.status_message, Some("I'm happy!".into()));
+        // Response should be empty for successful deauthorization
+        assert!(res.0.extra.is_empty());
 
         mock.assert_async().await;
     }
 
-    // cargo test --all-features test_make_mock_get_v2_profile_failure -- --nocapture --test-threads=1
+    // cargo test --all-features test_make_mock_post_user_v1_deauthorize_failure -- --nocapture --test-threads=1
     #[tokio::test]
-    async fn test_make_mock_get_v2_profile_failure() {
+    async fn test_make_mock_post_user_v1_deauthorize_failure() {
         let mut server = Server::new_async().await;
         let mut builder = MockParamsBuilder::default();
         builder.status_code(400usize);
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let res = get_v2_profile::execute(
-            "test_access_token",
+        let request_body = post_user_v1_deauthorize::RequestBody {
+            user_access_token: "test_user_access_token".to_string(),
+        };
+
+        let res = post_user_v1_deauthorize::execute(
+            "test_channel_access_token",
+            &request_body,
             &LineOptions {
                 prefix_url: Some(server.url()),
                 ..Default::default()
