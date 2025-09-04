@@ -1,0 +1,9 @@
+pub mod get_v2_bot_info;
+pub mod get_v2_bot_profile;
+pub mod get_v2_bot_message_quote_consumption;
+pub mod post_v2_bot_message_push;
+pub mod get_v2_bot_message_quote;
+pub mod get_v2_bot_message_aggregation_list;
+pub mod get_v2_bot_message_aggregation_info;
+pub mod get_v2_bot_insight_message_event_aggregation;
+pub mod post_v2_bot_message_validate_push;
