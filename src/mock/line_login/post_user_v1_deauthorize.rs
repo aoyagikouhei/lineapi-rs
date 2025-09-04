@@ -35,7 +35,8 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     } else {
         json!({
             "message": params.error_message
-        }).to_string()
+        })
+        .to_string()
     };
 
     let expected_body = json!({

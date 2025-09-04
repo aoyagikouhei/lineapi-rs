@@ -54,7 +54,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         .mock("GET", "/oauth2/v2.1/verify")
         .match_query(mockito::Matcher::UrlEncoded(
             "access_token".into(),
-            params.access_token.clone()
+            params.access_token.clone(),
         ))
         .with_status(params.status_code)
         .with_header("content-type", "application/json")

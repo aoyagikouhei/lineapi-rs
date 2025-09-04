@@ -94,8 +94,14 @@ mod tests {
 
         assert_eq!(res.0.sub, "U123456");
         assert_eq!(res.0.name, Some("Test User".into()));
-        assert_eq!(res.0.picture, Some("https://example.com/picture.jpg".into()));
-        assert_eq!(res.0.extra.get("email"), Some(&serde_json::json!("test@example.com")));
+        assert_eq!(
+            res.0.picture,
+            Some("https://example.com/picture.jpg".into())
+        );
+        assert_eq!(
+            res.0.extra.get("email"),
+            Some(&serde_json::json!("test@example.com"))
+        );
 
         mock.assert_async().await;
     }

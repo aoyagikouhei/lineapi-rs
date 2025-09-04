@@ -1,5 +1,5 @@
 use derive_builder::Builder;
-use mockito::{Mock, Server, Matcher};
+use mockito::{Matcher, Mock, Server};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -26,7 +26,8 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         builder.status_code(200usize);
     }
     if builder.custom_aggregation_units.is_none() {
-        builder.custom_aggregation_units(vec!["promotion_a".to_string(), "promotion_b".to_string()]);
+        builder
+            .custom_aggregation_units(vec!["promotion_a".to_string(), "promotion_b".to_string()]);
     }
     if builder.error_message.is_none() {
         builder.error_message("error occurred".to_string());
@@ -56,20 +57,22 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
     // Match query parameters if they exist
     if let Some(limit) = params.limit {
-        mock_builder = mock_builder.match_query(Matcher::AllOf(vec![
-            Matcher::UrlEncoded("limit".to_string(), limit.to_string())
-        ]));
+        mock_builder = mock_builder.match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "limit".to_string(),
+            limit.to_string(),
+        )]));
     }
     if let Some(start) = params.start {
         if let Some(limit) = params.limit {
             mock_builder = mock_builder.match_query(Matcher::AllOf(vec![
                 Matcher::UrlEncoded("limit".to_string(), limit.to_string()),
-                Matcher::UrlEncoded("start".to_string(), start)
+                Matcher::UrlEncoded("start".to_string(), start),
             ]));
         } else {
-            mock_builder = mock_builder.match_query(Matcher::AllOf(vec![
-                Matcher::UrlEncoded("start".to_string(), start)
-            ]));
+            mock_builder = mock_builder.match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+                "start".to_string(),
+                start,
+            )]));
         }
     }
 
@@ -93,7 +96,11 @@ mod tests {
         let mut server = Server::new_async().await;
         let mut builder = MockParamsBuilder::default();
         builder.limit(Some(50u8));
-        builder.custom_aggregation_units(vec!["unit1".to_string(), "unit2".to_string(), "unit3".to_string()]);
+        builder.custom_aggregation_units(vec![
+            "unit1".to_string(),
+            "unit2".to_string(),
+            "unit3".to_string(),
+        ]);
         builder.next(Some("next_token_123".to_string()));
         let mock = make_mock(&mut server, Some(builder)).await;
 
@@ -113,7 +120,10 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(res.0.custom_aggregation_units, vec!["unit1", "unit2", "unit3"]);
+        assert_eq!(
+            res.0.custom_aggregation_units,
+            vec!["unit1", "unit2", "unit3"]
+        );
         assert_eq!(res.0.next, Some("next_token_123".to_string()));
 
         mock.assert_async().await;

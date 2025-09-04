@@ -1,5 +1,5 @@
 use derive_builder::Builder;
-use mockito::{Mock, Server, Matcher};
+use mockito::{Matcher, Mock, Server};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -117,33 +117,41 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     let params = builder.build().unwrap();
 
     let body_json = if params.status_code == 200 {
-        let messages_json: Vec<serde_json::Value> = params.messages.iter().map(|msg| {
-            json!({
-                "seq": msg.seq,
-                "impression": msg.impression,
-                "uniqueImpression": msg.unique_impression,
-                "mediaPlayed": msg.media_played,
-                "mediaPlayed25Percent": msg.media_played_25_percent,
-                "mediaPlayed50Percent": msg.media_played_50_percent,
-                "mediaPlayed75Percent": msg.media_played_75_percent,
-                "mediaPlayed100Percent": msg.media_played_100_percent,
-                "uniqueMediaPlayed": msg.unique_media_played,
-                "uniqueMediaPlayed25Percent": msg.unique_media_played_25_percent,
-                "uniqueMediaPlayed50Percent": msg.unique_media_played_50_percent,
-                "uniqueMediaPlayed75Percent": msg.unique_media_played_75_percent,
-                "uniqueMediaPlayed100Percent": msg.unique_media_played_100_percent,
+        let messages_json: Vec<serde_json::Value> = params
+            .messages
+            .iter()
+            .map(|msg| {
+                json!({
+                    "seq": msg.seq,
+                    "impression": msg.impression,
+                    "uniqueImpression": msg.unique_impression,
+                    "mediaPlayed": msg.media_played,
+                    "mediaPlayed25Percent": msg.media_played_25_percent,
+                    "mediaPlayed50Percent": msg.media_played_50_percent,
+                    "mediaPlayed75Percent": msg.media_played_75_percent,
+                    "mediaPlayed100Percent": msg.media_played_100_percent,
+                    "uniqueMediaPlayed": msg.unique_media_played,
+                    "uniqueMediaPlayed25Percent": msg.unique_media_played_25_percent,
+                    "uniqueMediaPlayed50Percent": msg.unique_media_played_50_percent,
+                    "uniqueMediaPlayed75Percent": msg.unique_media_played_75_percent,
+                    "uniqueMediaPlayed100Percent": msg.unique_media_played_100_percent,
+                })
             })
-        }).collect();
+            .collect();
 
-        let clicks_json: Vec<serde_json::Value> = params.clicks.iter().map(|click| {
-            json!({
-                "seq": click.seq,
-                "url": click.url,
-                "click": click.click,
-                "uniqueClick": click.unique_click,
-                "uniqueClickOfRequest": click.unique_click_of_request,
+        let clicks_json: Vec<serde_json::Value> = params
+            .clicks
+            .iter()
+            .map(|click| {
+                json!({
+                    "seq": click.seq,
+                    "url": click.url,
+                    "click": click.click,
+                    "uniqueClick": click.unique_click,
+                    "uniqueClickOfRequest": click.unique_click_of_request,
+                })
             })
-        }).collect();
+            .collect();
 
         json!({
             "overview": {
@@ -168,7 +176,10 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
             format!("Bearer {}", params.channel_access_token).as_str(),
         )
         .match_query(Matcher::AllOf(vec![
-            Matcher::UrlEncoded("customAggregationUnit".to_string(), params.custom_aggregation_unit),
+            Matcher::UrlEncoded(
+                "customAggregationUnit".to_string(),
+                params.custom_aggregation_unit,
+            ),
             Matcher::UrlEncoded("from".to_string(), params.from),
             Matcher::UrlEncoded("to".to_string(), params.to),
         ]))
@@ -181,7 +192,9 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, messaging_api::get_v2_bot_insight_message_event_aggregation};
+    use crate::{
+        LineOptions, error::Error, messaging_api::get_v2_bot_insight_message_event_aggregation,
+    };
 
     use super::*;
 
@@ -195,7 +208,7 @@ mod tests {
         builder.to("20240731".to_string());
         builder.unique_impression(Some(2000u64));
         builder.unique_click(Some(300u64));
-        
+
         let test_message = MockMessage {
             seq: 2,
             impression: Some(1000),

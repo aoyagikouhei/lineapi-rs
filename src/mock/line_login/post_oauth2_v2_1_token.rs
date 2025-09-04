@@ -30,13 +30,19 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     if builder.grant_type.is_none() {
         builder.grant_type("authorization_code".to_string());
     }
-    if builder.code.is_none() && builder.grant_type.as_ref().map(|s| s.as_str()) == Some("authorization_code") {
+    if builder.code.is_none()
+        && builder.grant_type.as_deref() == Some("authorization_code")
+    {
         builder.code("test_code".to_string());
     }
-    if builder.redirect_uri.is_none() && builder.grant_type.as_ref().map(|s| s.as_str()) == Some("authorization_code") {
+    if builder.redirect_uri.is_none()
+        && builder.grant_type.as_deref() == Some("authorization_code")
+    {
         builder.redirect_uri("https://example.com/callback".to_string());
     }
-    if builder.refresh_token.is_none() && builder.grant_type.as_ref().map(|s| s.as_str()) == Some("refresh_token") {
+    if builder.refresh_token.is_none()
+        && builder.grant_type.as_deref() == Some("refresh_token")
+    {
         builder.refresh_token("test_refresh_token".to_string());
     }
     if builder.client_id.is_none() {
@@ -96,16 +102,24 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
             matchers.push(mockito::Matcher::UrlEncoded("code".into(), code));
         }
         if let Some(redirect_uri) = params.redirect_uri {
-            matchers.push(mockito::Matcher::UrlEncoded("redirect_uri".into(), redirect_uri));
+            matchers.push(mockito::Matcher::UrlEncoded(
+                "redirect_uri".into(),
+                redirect_uri,
+            ));
         }
         if let Some(client_secret) = params.client_secret.clone() {
-            matchers.push(mockito::Matcher::UrlEncoded("client_secret".into(), client_secret));
+            matchers.push(mockito::Matcher::UrlEncoded(
+                "client_secret".into(),
+                client_secret,
+            ));
         }
-    } else if params.grant_type == "refresh_token" {
-        if let Some(refresh_token) = params.refresh_token {
-            matchers.push(mockito::Matcher::UrlEncoded("refresh_token".into(), refresh_token));
+    } else if params.grant_type == "refresh_token"
+        && let Some(refresh_token) = params.refresh_token {
+            matchers.push(mockito::Matcher::UrlEncoded(
+                "refresh_token".into(),
+                refresh_token,
+            ));
         }
-    }
 
     server
         .mock("POST", "/oauth2/v2.1/token")

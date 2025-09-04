@@ -69,15 +69,13 @@ mod tests {
         let mut server = Server::new_async().await;
         let messages = vec![
             json!({"type": "text", "text": "Hello World!"}),
-            json!({"type": "text", "text": "How are you?"})
+            json!({"type": "text", "text": "How are you?"}),
         ];
         let mut builder = MockParamsBuilder::default();
         builder.messages(messages.clone());
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let request_body = post_v2_bot_message_validate_push::RequestBody {
-            messages,
-        };
+        let request_body = post_v2_bot_message_validate_push::RequestBody { messages };
 
         let res = post_v2_bot_message_validate_push::execute(
             request_body,
@@ -100,20 +98,16 @@ mod tests {
     #[tokio::test]
     async fn test_make_mock_post_v2_bot_message_validate_push_with_image() {
         let mut server = Server::new_async().await;
-        let messages = vec![
-            json!({
-                "type": "image",
-                "originalContentUrl": "https://example.com/original.jpg",
-                "previewImageUrl": "https://example.com/preview.jpg"
-            }),
-        ];
+        let messages = vec![json!({
+            "type": "image",
+            "originalContentUrl": "https://example.com/original.jpg",
+            "previewImageUrl": "https://example.com/preview.jpg"
+        })];
         let mut builder = MockParamsBuilder::default();
         builder.messages(messages.clone());
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let request_body = post_v2_bot_message_validate_push::RequestBody {
-            messages,
-        };
+        let request_body = post_v2_bot_message_validate_push::RequestBody { messages };
 
         let res = post_v2_bot_message_validate_push::execute(
             request_body,

@@ -158,7 +158,10 @@ mod tests {
         assert_eq!(res.0.nonce, Some("test_nonce".to_string()));
         assert_eq!(res.0.amr, vec!["linesso"]);
         assert_eq!(res.0.name, Some("Test User".to_string()));
-        assert_eq!(res.0.picture, Some("https://example.com/picture.jpg".to_string()));
+        assert_eq!(
+            res.0.picture,
+            Some("https://example.com/picture.jpg".to_string())
+        );
         assert_eq!(res.0.email, Some("test@example.com".to_string()));
 
         mock.assert_async().await;

@@ -63,7 +63,10 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     };
 
     server
-        .mock("GET", format!("/v2/bot/profile/{}", params.user_id).as_str())
+        .mock(
+            "GET",
+            format!("/v2/bot/profile/{}", params.user_id).as_str(),
+        )
         .match_header(
             "authorization",
             format!("Bearer {}", params.channel_access_token).as_str(),
@@ -106,7 +109,10 @@ mod tests {
         assert_eq!(res.0.display_name, "Test User");
         assert_eq!(res.0.user_id, "U123456789");
         assert_eq!(res.0.language, Some("ja".to_string()));
-        assert_eq!(res.0.picture_url, Some("https://example.com/user.jpg".to_string()));
+        assert_eq!(
+            res.0.picture_url,
+            Some("https://example.com/user.jpg".to_string())
+        );
         assert_eq!(res.0.status_message, Some("Hello!".to_string()));
 
         mock.assert_async().await;

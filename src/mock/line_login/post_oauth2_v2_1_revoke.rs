@@ -39,7 +39,9 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         })
     };
 
-    let mock = server
+    
+
+    server
         .mock("POST", "/oauth2/v2.1/revoke")
         .match_body(mockito::Matcher::AllOf(vec![
             mockito::Matcher::UrlEncoded("access_token".into(), params.access_token.clone()),
@@ -49,9 +51,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         .with_header("content-type", "application/json")
         .with_body(body_json.to_string())
         .create_async()
-        .await;
-
-    mock
+        .await
 }
 
 #[cfg(test)]

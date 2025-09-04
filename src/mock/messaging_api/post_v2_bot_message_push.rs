@@ -46,7 +46,8 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     let params = builder.build().unwrap();
 
     let body_json = if params.status_code == 200 {
-        let sent_messages: Vec<serde_json::Value> = params.sent_message_ids
+        let sent_messages: Vec<serde_json::Value> = params
+            .sent_message_ids
             .iter()
             .zip(params.sent_message_quote_tokens.iter())
             .map(|(id, quote_token)| {
@@ -73,24 +74,25 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         })
     };
 
-    let expected_body = if params.notification_disabled.is_some() || params.custom_aggregation_units.is_some() {
-        let mut body = json!({
-            "to": params.to,
-            "messages": params.messages
-        });
-        if let Some(notification_disabled) = params.notification_disabled {
-            body["notificationDisabled"] = json!(notification_disabled);
-        }
-        if let Some(custom_aggregation_units) = params.custom_aggregation_units {
-            body["customAggregationUnits"] = json!(custom_aggregation_units);
-        }
-        body
-    } else {
-        json!({
-            "to": params.to,
-            "messages": params.messages
-        })
-    };
+    let expected_body =
+        if params.notification_disabled.is_some() || params.custom_aggregation_units.is_some() {
+            let mut body = json!({
+                "to": params.to,
+                "messages": params.messages
+            });
+            if let Some(notification_disabled) = params.notification_disabled {
+                body["notificationDisabled"] = json!(notification_disabled);
+            }
+            if let Some(custom_aggregation_units) = params.custom_aggregation_units {
+                body["customAggregationUnits"] = json!(custom_aggregation_units);
+            }
+            body
+        } else {
+            json!({
+                "to": params.to,
+                "messages": params.messages
+            })
+        };
 
     server
         .mock("POST", "/v2/bot/message/push")
@@ -123,10 +125,8 @@ mod tests {
         builder.sent_message_quote_tokens(vec![Some("quote456".to_string())]);
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let request_body = post_v2_bot_message_push::RequestBody::new(
-            "U123456789",
-            messages,
-        ).unwrap();
+        let request_body =
+            post_v2_bot_message_push::RequestBody::new("U123456789", messages).unwrap();
 
         let _res = post_v2_bot_message_push::execute(
             request_body,
@@ -156,7 +156,8 @@ mod tests {
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
             vec![json!({"type": "text", "text": "Hello!"})],
-        ).unwrap();
+        )
+        .unwrap();
 
         let res = post_v2_bot_message_push::execute(
             request_body,

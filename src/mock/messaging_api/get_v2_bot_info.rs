@@ -113,9 +113,15 @@ mod tests {
         assert_eq!(res.0.basic_id, "@testbot");
         assert_eq!(res.0.premium_id, Some("premium123".into()));
         assert_eq!(res.0.display_name, "Test Bot");
-        assert_eq!(res.0.picture_url, Some("https://example.com/bot.jpg".into()));
+        assert_eq!(
+            res.0.picture_url,
+            Some("https://example.com/bot.jpg".into())
+        );
         assert_eq!(res.0.chat_mode, get_v2_bot_info::ChatMode::Chat);
-        assert_eq!(res.0.mark_as_read_mode, get_v2_bot_info::MarkAsReadMode::Manual);
+        assert_eq!(
+            res.0.mark_as_read_mode,
+            get_v2_bot_info::MarkAsReadMode::Manual
+        );
 
         mock.assert_async().await;
     }
@@ -143,7 +149,10 @@ mod tests {
         assert_eq!(res.0.display_name, "Test Bot");
         assert!(res.0.picture_url.is_none());
         assert_eq!(res.0.chat_mode, get_v2_bot_info::ChatMode::Bot);
-        assert_eq!(res.0.mark_as_read_mode, get_v2_bot_info::MarkAsReadMode::Auto);
+        assert_eq!(
+            res.0.mark_as_read_mode,
+            get_v2_bot_info::MarkAsReadMode::Auto
+        );
 
         mock.assert_async().await;
     }
