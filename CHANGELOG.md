@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.6.3 (2025/09/04)
+#### New Features
+- add mock builder
+
 ### v0.6.2 (2025/08/21)
 #### New Features
 - add Clone for request and response

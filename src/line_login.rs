@@ -31,6 +31,7 @@ fn make_scope_string(scopes: Vec<Scope>) -> String {
         .join(" ")
 }
 
+#[allow(clippy::result_large_err)]
 pub fn oauth_url(
     client_id: impl Into<String>,
     redirect_uri: impl Into<String>,
