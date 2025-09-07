@@ -100,9 +100,12 @@ mod tests {
         .await;
 
         match res {
-            Err(Error::Line(response, status_code, _header)) => {
-                assert_eq!(status_code, 500);
-                assert_eq!(response.message, "error occurred");
+            Err(e) => match *e {
+                Error::Line(response, status_code, _header) => {
+                    assert_eq!(status_code, 500);
+                    assert_eq!(response.message, "error occurred");
+                },
+                _ => panic!("Unexpected error"),
             }
             _ => panic!("Unexpected response"),
         }

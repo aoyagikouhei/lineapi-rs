@@ -30,7 +30,7 @@ pub fn build(access_token: &str, options: &LineOptions) -> RequestBuilder {
 pub async fn execute(
     access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(access_token, options),
         options,

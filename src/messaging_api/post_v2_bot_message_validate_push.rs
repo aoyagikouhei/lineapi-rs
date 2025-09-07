@@ -31,7 +31,7 @@ pub async fn execute(
     body: RequestBody,
     channel_access_token: &str,
     options: &LineOptions,
-) -> Result<(serde_json::Value, LineResponseHeader), Error> {
+) -> Result<(serde_json::Value, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(&body, channel_access_token, options),
         options,

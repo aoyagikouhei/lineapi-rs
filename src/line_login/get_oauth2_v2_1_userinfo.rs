@@ -41,7 +41,7 @@ pub fn build_post(access_token: &str, options: &LineOptions) -> RequestBuilder {
 pub async fn execute_get(
     access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build_get(access_token, options),
         options,
@@ -54,7 +54,7 @@ pub async fn execute_get(
 pub async fn execute_post(
     access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build_post(access_token, options),
         options,

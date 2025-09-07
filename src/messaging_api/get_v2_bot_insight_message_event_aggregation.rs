@@ -100,7 +100,7 @@ pub async fn execute(
     query_params: &QueryParams,
     channel_access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(query_params, channel_access_token, options),
         options,

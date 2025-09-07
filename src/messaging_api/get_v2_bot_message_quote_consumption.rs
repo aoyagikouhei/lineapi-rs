@@ -29,7 +29,7 @@ pub fn build(channel_access_token: &str, options: &LineOptions) -> RequestBuilde
 pub async fn execute(
     channel_access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(channel_access_token, options),
         options,

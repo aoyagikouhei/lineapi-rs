@@ -149,9 +149,12 @@ mod tests {
         .await;
 
         match res {
-            Err(Error::Line(response, status_code, _header)) => {
-                assert_eq!(status_code, 400);
-                assert_eq!(response.message, "Invalid message format");
+            Err(e) => match *e {
+                Error::Line(response, status_code, _header) => {
+                    assert_eq!(status_code, 400);
+                    assert_eq!(response.message, "Invalid message format");
+                },
+                _ => panic!("Unexpected error"),
             }
             _ => panic!("Unexpected response"),
         }

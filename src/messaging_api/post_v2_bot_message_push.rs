@@ -80,7 +80,7 @@ pub async fn execute(
     body: RequestBody,
     channel_access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(&body, channel_access_token, options),
         options,

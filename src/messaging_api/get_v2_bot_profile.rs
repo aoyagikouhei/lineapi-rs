@@ -34,7 +34,7 @@ pub async fn execute(
     user_id: &str,
     channel_access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(user_id, channel_access_token, options),
         options,

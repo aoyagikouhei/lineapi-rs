@@ -40,7 +40,7 @@ pub async fn execute(
     channel_access_token: &str,
     request_body: &RequestBody,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(channel_access_token, request_body, options),
         options,
@@ -54,7 +54,7 @@ pub async fn execute_simple(
     channel_access_token: &str,
     user_access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     let request_body = RequestBody {
         user_access_token: user_access_token.to_string(),
     };

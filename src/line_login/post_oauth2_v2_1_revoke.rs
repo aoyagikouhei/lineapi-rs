@@ -36,7 +36,7 @@ pub fn build(request_body: &RequestBody, options: &LineOptions) -> RequestBuilde
 pub async fn execute(
     request_body: &RequestBody,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(request_body, options),
         options,
@@ -51,7 +51,7 @@ pub async fn execute_simple(
     client_id: &str,
     client_secret: Option<String>,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     let request_body = RequestBody {
         access_token: access_token.to_string(),
         client_id: client_id.to_string(),

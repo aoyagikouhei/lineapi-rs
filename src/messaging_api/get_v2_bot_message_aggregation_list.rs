@@ -61,7 +61,7 @@ pub async fn execute(
     query_params: &QueryParams,
     channel_access_token: &str,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(query_params, channel_access_token, options),
         options,
@@ -75,7 +75,7 @@ pub fn make_stream(
     channel_access_token: &str,
     options: &LineOptions,
     max_page_count: u64,
-) -> impl Stream<Item = Result<String, Error>> {
+) -> impl Stream<Item = Result<String, Box<Error>>> {
     try_stream! {
         let mut current_page_count = 0;
         let mut query_params = QueryParams::new("");
@@ -114,7 +114,7 @@ pub async fn execute_stream(
     channel_access_token: &str,
     options: &LineOptions,
     max_page_count: u64,
-) -> Result<Vec<String>, Error> {
+) -> Result<Vec<String>, Box<Error>> {
     let stream = self::make_stream(channel_access_token, options, max_page_count);
     pin_mut!(stream); // おまじない
     let mut result = vec![];

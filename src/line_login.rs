@@ -38,7 +38,7 @@ pub fn oauth_url(
     scopes: Vec<Scope>,
     state: impl Into<String>,
     code_verifier: Option<impl Into<String>>,
-) -> Result<String, Error> {
+) -> Result<String, Box<Error>> {
     let mut url = Url::parse("https://access.line.me/oauth2/v2.1/authorize").unwrap();
     {
         let mut query_pairs_mut = url.query_pairs_mut();
@@ -52,9 +52,9 @@ pub fn oauth_url(
         if let Some(code_verifier) = code_verifier {
             let code_verifier = code_verifier.into();
             if !(43..=128).contains(&code_verifier.len()) {
-                return Err(Error::Invalid(
+                return Err(Box::new(Error::Invalid(
                     "code_verifier is length invalid".to_string(),
-                ));
+                )));
             }
             let code_challenge = Sha256::digest(code_verifier.as_bytes());
             let code_challenge =

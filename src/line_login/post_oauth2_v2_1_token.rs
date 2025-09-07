@@ -55,7 +55,7 @@ pub fn build(request_body: &RequestBody, options: &LineOptions) -> RequestBuilde
 pub async fn execute(
     request_body: &RequestBody,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(request_body, options),
         options,
@@ -72,7 +72,7 @@ pub async fn execute_authorization_code(
     client_secret: &str,
     code_verifier: Option<String>,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     let request_body = RequestBody::AuthorizationCode {
         code: code.to_string(),
         redirect_uri: redirect_uri.to_string(),
@@ -88,7 +88,7 @@ pub async fn execute_refresh_token(
     client_id: &str,
     client_secret: Option<String>,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     let request_body = RequestBody::RefreshToken {
         refresh_token: refresh_token.to_string(),
         client_id: client_id.to_string(),

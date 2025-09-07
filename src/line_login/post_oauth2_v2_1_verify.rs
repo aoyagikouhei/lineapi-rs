@@ -53,7 +53,7 @@ pub fn build(request_body: &RequestBody, options: &LineOptions) -> RequestBuilde
 pub async fn execute(
     request_body: &RequestBody,
     options: &LineOptions,
-) -> Result<(ResponseBody, LineResponseHeader), Error> {
+) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(request_body, options),
         options,

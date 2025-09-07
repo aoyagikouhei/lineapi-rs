@@ -109,21 +109,23 @@ pub(crate) fn calc_retry_duration(
 pub(crate) async fn execute_api_raw(
     builder: RequestBuilder,
     allow_conflict: bool,
-) -> Result<(serde_json::Value, LineResponseHeader, StatusCode), Error> {
-    let response = builder.send().await?;
+) -> Result<(serde_json::Value, LineResponseHeader, StatusCode), Box<Error>> {
+    let response = builder.send().await.map_err(|err| {
+        Box::new(Error::Reqwest(err))
+    })?;
     let status_code = response.status();
     let line_header = make_line_header(&response);
     let text = response.text().await.unwrap_or_default();
     let Ok(json) = serde_json::from_str(&text) else {
-        return Err(Error::OtherText(text, status_code, line_header));
+        return Err(Box::new(Error::OtherText(text, status_code, line_header)));
     };
     // コンフリクトしてもメッセージ送信はフォーマットが崩れないので成功とする
     if status_code.is_success() || (allow_conflict && status_code == StatusCode::CONFLICT) {
         Ok((json, line_header, status_code))
     } else {
         match serde_json::from_value::<ErrorResponse>(json.clone()) {
-            Ok(error_response) => Err(Error::Line(error_response, status_code, line_header)),
-            Err(_) => Err(Error::OtherJson(json, status_code, line_header)),
+            Ok(error_response) => Err(Box::new(Error::Line(error_response, status_code, line_header))),
+            Err(_) => Err(Box::new(Error::OtherJson(json, status_code, line_header))),
         }
     }
 }
@@ -135,7 +137,7 @@ pub(crate) async fn execute_api<T, F>(
     options: &LineOptions,
     is_retry: F,
     use_retry_key: bool,
-) -> Result<(T, LineResponseHeader), crate::error::Error>
+) -> Result<(T, LineResponseHeader), Box<Error>>
 where
     T: DeserializeOwned,
     F: Fn(StatusCode) -> bool,
@@ -179,13 +181,13 @@ where
                         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
                 ) {
                     // リトライしない
-                    res = Err(err);
+                    res = Err(*err);
                     break;
                 }
 
                 if i + 1 >= try_count {
                     // リトライ回数がオーバーしたので失敗にする
-                    res = Err(err);
+                    res = Err(*err);
                 } else if !retry_duration.is_zero() {
                     // リトライ間隔がある場合は待つ
                     tokio::time::sleep(calc_retry_duration(retry_duration, i as u32, &mut rng))
@@ -194,5 +196,5 @@ where
             }
         }
     }
-    res
+    res.map_err(|err| Box::new(err))
 }
