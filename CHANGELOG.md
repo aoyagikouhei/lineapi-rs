@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.7.0 (2025/09/08)
+#### Breaking Change
+- return Box<Error>
+
 ### v0.6.4 (2025/09/04)
 #### New Features
 - wrong release 0.6.3
