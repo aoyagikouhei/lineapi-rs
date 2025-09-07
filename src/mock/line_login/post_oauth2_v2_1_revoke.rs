@@ -39,8 +39,6 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         })
     };
 
-    
-
     server
         .mock("POST", "/oauth2/v2.1/revoke")
         .match_body(mockito::Matcher::AllOf(vec![
@@ -118,9 +116,9 @@ mod tests {
                 Error::Line(response, status_code, _header) => {
                     assert_eq!(status_code, 400);
                     assert_eq!(response.message, "error occurred");
-                },
+                }
                 _ => panic!("Unexpected error"),
-            }
+            },
             _ => panic!("Unexpected response"),
         }
 

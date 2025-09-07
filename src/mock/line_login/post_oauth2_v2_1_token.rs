@@ -30,19 +30,14 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
     if builder.grant_type.is_none() {
         builder.grant_type("authorization_code".to_string());
     }
-    if builder.code.is_none()
-        && builder.grant_type.as_deref() == Some("authorization_code")
-    {
+    if builder.code.is_none() && builder.grant_type.as_deref() == Some("authorization_code") {
         builder.code("test_code".to_string());
     }
-    if builder.redirect_uri.is_none()
-        && builder.grant_type.as_deref() == Some("authorization_code")
+    if builder.redirect_uri.is_none() && builder.grant_type.as_deref() == Some("authorization_code")
     {
         builder.redirect_uri("https://example.com/callback".to_string());
     }
-    if builder.refresh_token.is_none()
-        && builder.grant_type.as_deref() == Some("refresh_token")
-    {
+    if builder.refresh_token.is_none() && builder.grant_type.as_deref() == Some("refresh_token") {
         builder.refresh_token("test_refresh_token".to_string());
     }
     if builder.client_id.is_none() {
@@ -114,12 +109,13 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
             ));
         }
     } else if params.grant_type == "refresh_token"
-        && let Some(refresh_token) = params.refresh_token {
-            matchers.push(mockito::Matcher::UrlEncoded(
-                "refresh_token".into(),
-                refresh_token,
-            ));
-        }
+        && let Some(refresh_token) = params.refresh_token
+    {
+        matchers.push(mockito::Matcher::UrlEncoded(
+            "refresh_token".into(),
+            refresh_token,
+        ));
+    }
 
     server
         .mock("POST", "/oauth2/v2.1/token")
@@ -240,9 +236,9 @@ mod tests {
                 Error::Line(response, status_code, _header) => {
                     assert_eq!(status_code, 400);
                     assert_eq!(response.message, "error occurred");
-                },
+                }
                 _ => panic!("Unexpected error"),
-            }
+            },
             _ => panic!("Unexpected response"),
         }
 

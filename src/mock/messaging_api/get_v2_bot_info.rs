@@ -179,9 +179,9 @@ mod tests {
                 Error::Line(response, status_code, _header) => {
                     assert_eq!(status_code, 400);
                     assert_eq!(response.message, "error occurred");
-                },
+                }
                 _ => panic!("Unexpected error"),
-            }
+            },
             _ => panic!("Unexpected response"),
         }
 

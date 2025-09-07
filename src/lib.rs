@@ -110,9 +110,10 @@ pub(crate) async fn execute_api_raw(
     builder: RequestBuilder,
     allow_conflict: bool,
 ) -> Result<(serde_json::Value, LineResponseHeader, StatusCode), Box<Error>> {
-    let response = builder.send().await.map_err(|err| {
-        Box::new(Error::Reqwest(err))
-    })?;
+    let response = builder
+        .send()
+        .await
+        .map_err(|err| Box::new(Error::Reqwest(err)))?;
     let status_code = response.status();
     let line_header = make_line_header(&response);
     let text = response.text().await.unwrap_or_default();
@@ -124,7 +125,11 @@ pub(crate) async fn execute_api_raw(
         Ok((json, line_header, status_code))
     } else {
         match serde_json::from_value::<ErrorResponse>(json.clone()) {
-            Ok(error_response) => Err(Box::new(Error::Line(error_response, status_code, line_header))),
+            Ok(error_response) => Err(Box::new(Error::Line(
+                error_response,
+                status_code,
+                line_header,
+            ))),
             Err(_) => Err(Box::new(Error::OtherJson(json, status_code, line_header))),
         }
     }
@@ -196,5 +201,5 @@ where
             }
         }
     }
-    res.map_err(|err| Box::new(err))
+    res.map_err(Box::new)
 }
