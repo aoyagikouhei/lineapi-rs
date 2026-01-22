@@ -6,7 +6,6 @@ use reqwest::{
     header::{self, AUTHORIZATION},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use uuid::Uuid;
 
 use crate::error::{Error, ErrorResponse};
 
@@ -141,7 +140,7 @@ pub(crate) async fn execute_api<T, F>(
     f: impl Fn() -> RequestBuilder,
     options: &LineOptions,
     is_retry: F,
-    use_retry_key: bool,
+    retry_key: Option<String>,
 ) -> Result<(T, LineResponseHeader), Box<Error>>
 where
     T: DeserializeOwned,
@@ -150,7 +149,6 @@ where
     // リトライ処理
     // https://developers.line.biz/ja/docs/messaging-api/retrying-api-request/#flow-of-api-request-retry
     let mut res = Err(Error::Invalid("fail loop".to_string()));
-    let retry_key = Uuid::now_v7().to_string();
     let try_count = options.get_try_count();
     let retry_duration: Duration = options.get_retry_duration();
     let mut rng = StdRng::from_os_rng();
@@ -158,11 +156,13 @@ where
         // リクエスト準備
         let mut builder = f();
         // リトライ処理はtry_countが1以上の場合のみ
-        if use_retry_key && try_count > 1 {
-            // リトライ回数がある場合はリトライキーをヘッダーに追加
-            builder = builder.header(HEADER_RETRY_KEY, &retry_key);
+        if let Some(retry_key) = &retry_key {
+            if try_count > 1 {
+                // リトライ回数がある場合はリトライキーをヘッダーに追加
+                builder = builder.header(HEADER_RETRY_KEY, retry_key);
+            }
         }
-        match execute_api_raw(builder, use_retry_key).await {
+        match execute_api_raw(builder, retry_key.is_some()).await {
             Ok((json, line_header, status_code)) => {
                 res = match serde_json::from_value(json.clone()) {
                     // フォーマットがあっている

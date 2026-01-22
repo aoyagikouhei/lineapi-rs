@@ -35,7 +35,7 @@ pub async fn execute(
         || build(access_token, options),
         options,
         is_standard_retry,
-        false,
+        None,
     )
     .await
 }

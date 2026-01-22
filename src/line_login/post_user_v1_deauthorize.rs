@@ -45,7 +45,7 @@ pub async fn execute(
         || build(channel_access_token, request_body, options),
         options,
         is_standard_retry,
-        false,
+        None,
     )
     .await
 }

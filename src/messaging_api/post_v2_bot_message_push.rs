@@ -80,18 +80,21 @@ pub async fn execute(
     body: RequestBody,
     channel_access_token: &str,
     options: &LineOptions,
+    retry_key: Option<String>,
 ) -> Result<(ResponseBody, LineResponseHeader), Box<Error>> {
     execute_api(
         || build(&body, channel_access_token, options),
         options,
         is_standard_retry,
-        true,
+        retry_key,
     )
     .await
 }
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use crate::LineOptions;
 
     // USER_ID=xxx CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_post_v2_bot_message_push -- --nocapture --test-threads=1
@@ -110,7 +113,8 @@ mod tests {
         .unwrap();
         body.notification_disabled = Some(true);
         body.custom_aggregation_units = Some(vec!["promotion_a".to_owned()]);
-        let (response, header) = super::execute(body, &channel_access_token, &options)
+        let retry_key = Some(Uuid::now_v7().to_string());
+        let (response, header) = super::execute(body, &channel_access_token, &options, retry_key)
             .await
             .unwrap();
         println!("{response:?}");

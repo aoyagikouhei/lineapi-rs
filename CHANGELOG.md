@@ -1,5 +1,11 @@
 ## Changes
 
+### v0.8.0 (2026/01/22)
+#### Breaking Change
+- update reqwest 0.13
+- rm feature rustls-tls
+- modify post_v2_bot_message_push add retry_key
+
 ### v0.7.0 (2025/09/08)
 #### Breaking Change
 - return Box<Error>

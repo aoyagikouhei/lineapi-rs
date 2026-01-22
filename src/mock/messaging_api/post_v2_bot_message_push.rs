@@ -135,6 +135,7 @@ mod tests {
                 prefix_url: Some(server.url()),
                 ..Default::default()
             },
+            None,
         )
         .await
         .unwrap();
@@ -166,6 +167,7 @@ mod tests {
                 prefix_url: Some(server.url()),
                 ..Default::default()
             },
+            None,
         )
         .await;
 

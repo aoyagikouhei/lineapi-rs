@@ -36,7 +36,7 @@ pub async fn execute(
         || build(&body, channel_access_token, options),
         options,
         is_standard_retry,
-        true,
+        None,
     )
     .await
 }

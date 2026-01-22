@@ -46,7 +46,7 @@ pub async fn execute_get(
         || build_get(access_token, options),
         options,
         is_standard_retry,
-        false,
+        None,
     )
     .await
 }
@@ -59,7 +59,7 @@ pub async fn execute_post(
         || build_post(access_token, options),
         options,
         is_standard_retry,
-        false,
+        None,
     )
     .await
 }
