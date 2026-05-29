@@ -14,6 +14,8 @@
   - response body-read failures now propagate as `Error::Reqwest` instead of being swallowed into an empty body
   - add `with_prefix_url` / `with_timeout_duration` / `with_try_count` / `with_retry_duration` builders
   - note: callbacks are `#[serde(skip)]`, so serializing then deserializing a `LineOptions` drops them; set them via `with_on_request` / `with_on_response`
+  - a panic inside an `on_request` / `on_response` callback is caught and logged via `tracing::error!`; the API call keeps running (logging stays a side-channel)
+  - `with_try_count(0)` is treated as `1` (at least one attempt) instead of returning an opaque error
 #### Modify
 - update rand 0.10
 - update sha2 0.11

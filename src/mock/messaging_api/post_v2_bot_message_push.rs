@@ -246,6 +246,85 @@ mod tests {
         assert!(ress[0].1["sentMessages"].is_array());
     }
 
+    // on_response 設定時に response.headers() を複製してコールバックへ渡す分岐を保護する。
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_response_headers -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_callbacks_response_headers() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mock = make_mock(&mut server, None).await;
+
+        // レスポンスヘッダーに content-type が含まれるか
+        let has_content_type = Arc::new(Mutex::new(false));
+        let hct = has_content_type.clone();
+        let options = LineOptions::default()
+            .with_prefix_url(server.url())
+            .with_on_response(move |_req, res| {
+                *hct.lock().unwrap() = res.headers().contains_key("content-type");
+            });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        assert!(
+            *has_content_type.lock().unwrap(),
+            "on_response must receive the cloned response headers (content-type)"
+        );
+    }
+
+    // 外部クレートが強制されるビルダー経路(LineOptions::default().with_*())でオプションを
+    // 組み、コールバックが発火することを確認する(#[non_exhaustive] 下の公開人間工学の回帰保護)。
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_builder_path -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_builder_path() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mock = make_mock(&mut server, None).await;
+
+        let fired = Arc::new(Mutex::new(false));
+        let f = fired.clone();
+        let options = LineOptions::default()
+            .with_prefix_url(server.url())
+            .with_try_count(1)
+            .with_on_request(move |_log| {
+                *f.lock().unwrap() = true;
+            });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+        assert!(
+            *fired.lock().unwrap(),
+            "callback set via builder path must fire"
+        );
+    }
+
     // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_retry -- --nocapture --test-threads=1
     #[tokio::test]
     async fn test_make_mock_post_v2_bot_message_push_callbacks_retry() {

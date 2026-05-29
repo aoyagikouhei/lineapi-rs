@@ -70,11 +70,14 @@ impl<'a> LineRequestLog<'a> {
         self.headers
     }
 
-    /// リクエスト内容を JSON 化した論理表現。
+    /// 各エンドポイントがログ用に渡す論理表現を JSON 化したもの。
     ///
     /// フォームエンコード系エンドポイント(OAuth の token / revoke / POST verify)では
     /// 実際の送信形式は `application/x-www-form-urlencoded` であり、この JSON 表現とは
-    /// 異なる。GET 系(GET verify を含む)はボディを持たないため `Value::Null` になる。
+    /// 異なる。ボディを持たない GET(GET verify など)は `Value::Null`、クエリ系の GET
+    /// (`get_v2_bot_message_aggregation_list` / `get_v2_bot_insight_message_event_aggregation`)
+    /// は query params を JSON オブジェクト化した値になる(HTTP ボディそのものではなく
+    /// ログ表現である点に注意)。
     /// シリアライズに失敗した場合は `{"_serialize_error": "<理由>"}` となり、`Value::Null`
     /// (=ボディ無し)とは区別できる。
     pub fn body(&self) -> &'a serde_json::Value {
@@ -100,6 +103,11 @@ impl<'a> LineRequestLog<'a> {
 }
 
 /// レスポンス受信後にコールバックへ渡される情報。
+///
+/// ボディは `enum`(例: `Json`/`Raw`)ではなく、`body()` で一律 `&serde_json::Value` を
+/// 返し、JSON としてパースできたかを [`body_was_json`](Self::body_was_json) で分離する設計。
+/// こうすることでログ出力やシリアライズ側が分岐なしに `Value` を扱え、非 JSON ボディも
+/// `Value::String` として一様に観測できる。
 #[derive(Debug, Clone)]
 pub struct LineResponseLog<'a> {
     headers: &'a HeaderMap,
@@ -148,7 +156,12 @@ impl<'a> LineResponseLog<'a> {
 /// [`body_redacted`](LineRequestLog::body_redacted) /
 /// [`body_redacted`](LineResponseLog::body_redacted) でマスクされるボディのキー。
 ///
-/// マッチは大文字小文字を無視して行う。
+/// エントリは**すべて小文字**で記載し、マッチは大文字小文字を無視して行う
+/// (例: `userAccessToken` は `useraccesstoken` のエントリでマッチする)。
+///
+/// これらのキーはリクエスト/レスポンス双方のボディで再帰的にマスクされる(security-first)。
+/// `code` のような汎用キーは、レスポンス側に正当な `code` フィールドがあっても `***` に
+/// 潰し得るが、秘匿情報(OAuth の認可コード)の漏洩回避を優先した意図的な挙動である。
 pub const REDACTED_BODY_KEYS: &[&str] = &[
     "access_token",
     "refresh_token",
@@ -160,6 +173,10 @@ pub const REDACTED_BODY_KEYS: &[&str] = &[
 ];
 
 /// `Authorization` ヘッダー値を `***` に置換したヘッダーの複製を返す。
+///
+/// マスク対象を `Authorization` のみに絞っているのは意図的である。本クレートが付与する
+/// ヘッダーのうち秘匿情報は `Authorization: Bearer <token>` だけで、`X-Line-Retry-Key`
+/// などその他のヘッダーは秘匿情報ではないため。
 fn redact_headers(headers: &HeaderMap) -> HeaderMap {
     let mut redacted = headers.clone();
     if redacted.contains_key(AUTHORIZATION) {
@@ -193,10 +210,25 @@ fn redact_body(value: &serde_json::Value) -> serde_json::Value {
 /// ログ用にリクエストボディを JSON 化する。
 ///
 /// シリアライズに失敗した場合は `Value::Null`(=ボディ無し)と区別できるよう
-/// `{"_serialize_error": "<理由>"}` を返す。
+/// `{"_serialize_error": "<理由>"}` を返す。`_serialize_error` は番兵キーだが、LINE の
+/// リクエスト型(`RequestBody` / `QueryParams`)に同名フィールドは存在しないため実ボディと
+/// 衝突しない。そもそも対象は文字列キーの serde 構造体であり、シリアライズ失敗は実質
+/// 発生しない防御的経路である。
 pub(crate) fn serialize_log_body<T: Serialize>(value: &T) -> serde_json::Value {
     serde_json::to_value(value)
         .unwrap_or_else(|err| serde_json::json!({ "_serialize_error": err.to_string() }))
+}
+
+/// ログコールバックを panic 隔離して実行する。
+///
+/// コールバックは利用側のコードであり、内部で panic し得る。ログは観測のための副経路で
+/// あるべきなので、panic を捕捉してログ出力し、API 呼び出し自体は継続させる。
+fn run_log_callback(label: &str, f: impl FnOnce()) {
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err() {
+        tracing::error!(
+            "LineOptions {label} callback panicked; ignored to keep the API call alive"
+        );
+    }
 }
 
 /// リクエスト送信直前に呼ばれるコールバック。
@@ -244,7 +276,9 @@ impl std::fmt::Debug for LineOptions {
 
 impl LineOptions {
     pub fn get_try_count(&self) -> u8 {
-        self.try_count.unwrap_or(1)
+        // 0 は 1 に正規化する。0 のままだとリトライループが一度も回らず、
+        // 不透明な `Error::Invalid("fail loop")` が返ってしまうため。
+        self.try_count.unwrap_or(1).max(1)
     }
 
     pub fn get_retry_duration(&self) -> Duration {
@@ -271,6 +305,8 @@ impl LineOptions {
     }
 
     /// 試行回数(リトライ含む)を設定する。
+    ///
+    /// `0` を渡した場合は `1` として扱う(最低 1 回は試行する)。
     pub fn with_try_count(mut self, try_count: u8) -> Self {
         self.try_count = Some(try_count);
         self
@@ -288,9 +324,10 @@ impl LineOptions {
     /// ボディ)が含まれ得る。ログ出力時のマスクについては [`LineRequestLog`] の
     /// ドキュメントを参照。
     ///
-    /// コールバックは API 呼び出しのリクエスト経路で同期的に実行される。内部で panic
-    /// すると API 呼び出し自体が失敗し、コールバックが共有するロック等を poison し得る
-    /// ため、panic させないこと。
+    /// コールバックは API 呼び出しのリクエスト経路で同期的に実行される。内部で panic した
+    /// 場合は捕捉してログ出力し、API 呼び出し自体は継続する(ログは観測の副経路に徹する)。
+    /// ただしコールバックが共有ロックを保持したまま panic すると、そのロックは poison され
+    /// 得る(panic 捕捉では巻き戻せない)ため、引き続き panic させないことを推奨する。
     pub fn with_on_request(mut self, f: impl Fn(&LineRequestLog) + Send + Sync + 'static) -> Self {
         self.on_request = Some(Arc::new(f));
         self
@@ -302,9 +339,10 @@ impl LineOptions {
     /// ヘッダーや OAuth 系のボディ/レスポンス)が含まれ得る。ログ出力時のマスクについては
     /// [`LineRequestLog`] / [`LineResponseLog`] のドキュメントを参照。
     ///
-    /// コールバックは API 呼び出しのレスポンス経路で同期的に実行される。内部で panic
-    /// すると API 呼び出し自体が失敗し、コールバックが共有するロック等を poison し得る
-    /// ため、panic させないこと。
+    /// コールバックは API 呼び出しのレスポンス経路で同期的に実行される。内部で panic した
+    /// 場合は捕捉してログ出力し、API 呼び出し自体は継続する(ログは観測の副経路に徹する)。
+    /// ただしコールバックが共有ロックを保持したまま panic すると、そのロックは poison され
+    /// 得る(panic 捕捉では巻き戻せない)ため、引き続き panic させないことを推奨する。
     pub fn with_on_response(
         mut self,
         f: impl Fn(&LineRequestLog, &LineResponseLog) + Send + Sync + 'static,
@@ -393,9 +431,11 @@ pub(crate) async fn execute_api_raw(
     };
 
     if let Some(cb) = &options.on_request {
-        cb(&LineRequestLog {
-            headers: request_headers.as_ref(),
-            body: request_value,
+        run_log_callback("on_request", || {
+            cb(&LineRequestLog {
+                headers: request_headers.as_ref(),
+                body: request_value,
+            });
         });
     }
 
@@ -424,18 +464,20 @@ pub(crate) async fn execute_api_raw(
             .ok()
             .cloned()
             .unwrap_or_else(|| serde_json::Value::String(text.clone()));
-        cb(
-            &LineRequestLog {
-                headers: request_headers.as_ref(),
-                body: request_value,
-            },
-            &LineResponseLog {
-                headers: &response_headers,
-                body: &response_value,
-                status_code,
-                body_was_json: json_result.is_ok(),
-            },
-        );
+        run_log_callback("on_response", || {
+            cb(
+                &LineRequestLog {
+                    headers: request_headers.as_ref(),
+                    body: request_value,
+                },
+                &LineResponseLog {
+                    headers: &response_headers,
+                    body: &response_value,
+                    status_code,
+                    body_was_json: json_result.is_ok(),
+                },
+            );
+        });
     }
 
     let Ok(json) = json_result else {
@@ -583,6 +625,22 @@ mod tests {
         assert_eq!(out["ID_TOKEN"], "***");
     }
 
+    // 実際の deauthorize リクエストボディ(ヘッダーとボディの双方に秘匿情報を持つ唯一の
+    // エンドポイント)を、フィールド名込みで serialize -> redact に通し、camelCase の
+    // `userAccessToken` が確実にマスクされることを固定する。
+    #[test]
+    fn test_redact_deauthorize_request_body() {
+        use crate::line_login::post_user_v1_deauthorize::RequestBody;
+        let body = RequestBody {
+            user_access_token: "super-secret-token".to_string(),
+        };
+        let value = serialize_log_body(&body);
+        // serde rename により JSON 上は camelCase になる
+        assert_eq!(value["userAccessToken"], "super-secret-token");
+        let redacted = redact_body(&value);
+        assert_eq!(redacted["userAccessToken"], "***");
+    }
+
     // コールバック未設定なら request_value_fn は呼ばれない(無駄なシリアライズを避ける)。
     #[cfg(feature = "mock")]
     #[tokio::test]
@@ -608,6 +666,36 @@ mod tests {
         .await;
 
         assert!(result.is_ok());
+        mock.assert_async().await;
+    }
+
+    // コールバックが panic しても API 呼び出しは成功する(ログは副経路に徹し、panic は
+    // run_log_callback で捕捉される)。
+    #[cfg(feature = "mock")]
+    #[tokio::test]
+    async fn test_callback_panic_does_not_fail_api() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/test")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+        let url = format!("{}/test", server.url());
+        let options = LineOptions::default()
+            .with_on_request(|_log| panic!("on_request callback panics"))
+            .with_on_response(|_req, _res| panic!("on_response callback panics"));
+
+        let result: Result<(serde_json::Value, LineResponseHeader), _> = execute_api(
+            || reqwest::Client::new().get(&url),
+            &options,
+            is_standard_retry,
+            None,
+            || serde_json::Value::Null,
+        )
+        .await;
+
+        assert!(result.is_ok(), "callback panic must not fail the API call");
         mock.assert_async().await;
     }
 }
