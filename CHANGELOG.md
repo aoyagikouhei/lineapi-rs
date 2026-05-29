@@ -5,6 +5,10 @@
 - add fields to `LineOptions` and mark it `#[non_exhaustive]` (construct via `..Default::default()` or the builder methods instead of an exhaustive struct literal)
 #### New Features
 - add on_request / on_response callbacks to LineOptions for request/response logging
+  - `LineRequestLog` / `LineResponseLog` expose their fields via accessor methods (`headers()`, `body()`, `status_code()`)
+  - `LineRequestLog::headers()` returns `Option<&HeaderMap>` so a header-capture failure is distinguishable from empty headers
+  - `LineRequestLog::headers_redacted()` returns a header copy with the `Authorization` value masked
+  - note: callbacks are `#[serde(skip)]`, so serializing then deserializing a `LineOptions` drops them; set them via `with_on_request` / `with_on_response`
 #### Modify
 - update rand 0.10
 

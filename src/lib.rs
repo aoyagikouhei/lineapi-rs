@@ -4,7 +4,7 @@ use std::time::Duration;
 use rand::{RngExt, rngs::StdRng};
 use reqwest::{
     RequestBuilder, Response, StatusCode,
-    header::{self, AUTHORIZATION, HeaderMap},
+    header::{self, AUTHORIZATION, HeaderMap, HeaderValue},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -27,27 +27,88 @@ pub struct LineResponseHeader {
     pub accepted_request_id: Option<String>,
 }
 
+/// 秘匿情報をマスクする際の置換文字列。
+const REDACTED: &str = "***";
+
 /// リクエスト送信直前にコールバックへ渡される情報。
 ///
-/// `headers` には `Authorization: Bearer <token>` が含まれるため、ログ出力時は
-/// アクセストークンが露出しないようマスクすること。
+/// # 秘匿情報の扱い
+///
+/// メッセージング系エンドポイントでは [`headers`](Self::headers) に
+/// `Authorization: Bearer <token>` が**含まれる場合がある**。一方、OAuth ログイン系
+/// (token / revoke / verify)は `Authorization` ヘッダーを付けず、`client_secret` /
+/// `refresh_token` / `access_token` などの秘匿情報を**ボディやクエリ**側に持つ。
+///
+/// ログ出力時は [`headers_redacted`](Self::headers_redacted) で `Authorization`
+/// ヘッダーをマスクできるが、ボディ/クエリ側の秘匿情報は呼び出し側でマスクすること。
 #[derive(Debug, Clone)]
 pub struct LineRequestLog<'a> {
-    pub headers: &'a HeaderMap,
+    headers: Option<&'a HeaderMap>,
+    body: &'a serde_json::Value,
+}
+
+impl<'a> LineRequestLog<'a> {
+    /// リクエストヘッダー。
+    ///
+    /// リクエストの複製(`try_clone`)や再構築に失敗した場合は `None`。これにより
+    /// 「ヘッダーが空」と「捕捉に失敗」を区別できる。
+    pub fn headers(&self) -> Option<&'a HeaderMap> {
+        self.headers
+    }
+
     /// リクエスト内容を JSON 化した論理表現。
     ///
-    /// フォームエンコード系エンドポイント(OAuth の token / revoke / verify)では
-    /// 実際の送信形式は `application/x-www-form-urlencoded` であり、この `body`
-    /// (JSON 表現)とは異なる点に注意。
-    pub body: &'a serde_json::Value,
+    /// フォームエンコード系エンドポイント(OAuth の token / revoke / POST verify)では
+    /// 実際の送信形式は `application/x-www-form-urlencoded` であり、この JSON 表現とは
+    /// 異なる。GET 系(GET verify を含む)はボディを持たないため `Value::Null` になる。
+    pub fn body(&self) -> &'a serde_json::Value {
+        self.body
+    }
+
+    /// `Authorization` ヘッダー値を `***` に置換したヘッダーの複製を返す。
+    ///
+    /// ヘッダーのみをマスクする。OAuth 系のようにボディ/クエリへ秘匿情報が入る
+    /// 場合は [`body`](Self::body) を別途マスクすること。捕捉失敗時は `None`。
+    pub fn headers_redacted(&self) -> Option<HeaderMap> {
+        self.headers.map(redact_headers)
+    }
 }
 
 /// レスポンス受信後にコールバックへ渡される情報。
 #[derive(Debug, Clone)]
 pub struct LineResponseLog<'a> {
-    pub headers: &'a HeaderMap,
-    pub body: &'a serde_json::Value,
-    pub status_code: StatusCode,
+    headers: &'a HeaderMap,
+    body: &'a serde_json::Value,
+    status_code: StatusCode,
+}
+
+impl<'a> LineResponseLog<'a> {
+    /// レスポンスヘッダー。
+    pub fn headers(&self) -> &'a HeaderMap {
+        self.headers
+    }
+
+    /// レスポンスボディ。
+    ///
+    /// JSON としてパースできた場合はその値、できなかった場合は生テキストを
+    /// `Value::String` で包んだ値が渡される。
+    pub fn body(&self) -> &'a serde_json::Value {
+        self.body
+    }
+
+    /// レスポンスのステータスコード。
+    pub fn status_code(&self) -> StatusCode {
+        self.status_code
+    }
+}
+
+/// `Authorization` ヘッダー値を `***` に置換したヘッダーの複製を返す。
+fn redact_headers(headers: &HeaderMap) -> HeaderMap {
+    let mut redacted = headers.clone();
+    if redacted.contains_key(AUTHORIZATION) {
+        redacted.insert(AUTHORIZATION, HeaderValue::from_static(REDACTED));
+    }
+    redacted
 }
 
 /// リクエスト送信直前に呼ばれるコールバック。
@@ -56,6 +117,15 @@ pub type OnRequest = Arc<dyn Fn(&LineRequestLog) + Send + Sync>;
 /// レスポンス受信後に呼ばれるコールバック。
 pub type OnResponse = Arc<dyn Fn(&LineRequestLog, &LineResponseLog) + Send + Sync>;
 
+/// API 呼び出しごとの設定。
+///
+/// # serde について
+///
+/// `on_request` / `on_response` コールバックは `#[serde(skip)]` 指定のため
+/// **シリアライズ/デシリアライズの対象外**。設定済みの `LineOptions` を serialize →
+/// deserialize するとコールバックは失われる(`None` になる)。コールバックは
+/// [`with_on_request`](Self::with_on_request) /
+/// [`with_on_response`](Self::with_on_response) で実行時に設定すること。
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct LineOptions {
@@ -65,10 +135,10 @@ pub struct LineOptions {
     pub retry_duration: Option<Duration>,
     /// リクエスト送信直前に呼ばれるコールバック(指定時のみ)。
     #[serde(skip)]
-    pub on_request: Option<OnRequest>,
+    pub(crate) on_request: Option<OnRequest>,
     /// レスポンス受信後に呼ばれるコールバック(指定時のみ)。
     #[serde(skip)]
-    pub on_response: Option<OnResponse>,
+    pub(crate) on_response: Option<OnResponse>,
 }
 
 impl std::fmt::Debug for LineOptions {
@@ -99,8 +169,9 @@ impl LineOptions {
 
     /// リクエスト送信直前に呼ばれるコールバックを設定する。
     ///
-    /// 渡される `LineRequestLog.headers` には `Authorization` ヘッダー
-    /// (アクセストークン)が含まれる点に注意。
+    /// 渡される [`LineRequestLog`] には秘匿情報(`Authorization` ヘッダーや OAuth 系の
+    /// ボディ/クエリ)が含まれ得る。ログ出力時のマスクについては
+    /// [`LineRequestLog`] のドキュメントを参照。
     pub fn with_on_request(mut self, f: impl Fn(&LineRequestLog) + Send + Sync + 'static) -> Self {
         self.on_request = Some(Arc::new(f));
         self
@@ -108,8 +179,9 @@ impl LineOptions {
 
     /// レスポンス受信後に呼ばれるコールバックを設定する。
     ///
-    /// 渡される `LineRequestLog.headers` には `Authorization` ヘッダー
-    /// (アクセストークン)が含まれる点に注意。
+    /// 渡される [`LineRequestLog`] には秘匿情報(`Authorization` ヘッダーや OAuth 系の
+    /// ボディ/クエリ)が含まれ得る。ログ出力時のマスクについては
+    /// [`LineRequestLog`] のドキュメントを参照。
     pub fn with_on_response(
         mut self,
         f: impl Fn(&LineRequestLog, &LineResponseLog) + Send + Sync + 'static,
@@ -187,19 +259,19 @@ pub(crate) async fn execute_api_raw(
     // リクエストヘッダーを取得(コールバック設定時のみ)。
     // try_clone -> build で Request を得て headers を clone する。
     // リトライキー付与後の builder を受け取るので X-Line-Retry-Key も含まれる。
-    let request_headers = if need_log {
+    // try_clone / build に失敗した場合は None とし、捕捉失敗を呼び出し側へ伝える。
+    let request_headers: Option<HeaderMap> = if need_log {
         builder
             .try_clone()
             .and_then(|b| b.build().ok())
             .map(|req| req.headers().clone())
-            .unwrap_or_default()
     } else {
-        HeaderMap::new()
+        None
     };
 
     if let Some(cb) = &options.on_request {
         cb(&LineRequestLog {
-            headers: &request_headers,
+            headers: request_headers.as_ref(),
             body: request_value,
         });
     }
@@ -227,7 +299,7 @@ pub(crate) async fn execute_api_raw(
             .unwrap_or_else(|| serde_json::Value::String(text.clone()));
         cb(
             &LineRequestLog {
-                headers: &request_headers,
+                headers: request_headers.as_ref(),
                 body: request_value,
             },
             &LineResponseLog {
@@ -284,7 +356,7 @@ where
     for i in 0..try_count {
         // リクエスト準備
         let mut builder = f();
-        // リトライ処理はtry_countが1以上の場合のみ
+        // リトライキー付与は try_count が 2 以上(リトライあり)の場合のみ
         if let Some(retry_key) = &retry_key
             && try_count > 1
         {

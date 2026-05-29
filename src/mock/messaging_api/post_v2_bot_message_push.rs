@@ -208,14 +208,15 @@ mod tests {
             ..Default::default()
         }
         .with_on_request(move |log| {
-            creq.lock()
-                .unwrap()
-                .push((log.headers.contains_key("authorization"), log.body.clone()));
+            let has_auth = log
+                .headers()
+                .is_some_and(|h| h.contains_key("authorization"));
+            creq.lock().unwrap().push((has_auth, log.body().clone()));
         })
         .with_on_response(move |_req, res| {
             cres.lock()
                 .unwrap()
-                .push((res.status_code.as_u16(), res.body.clone()));
+                .push((res.status_code().as_u16(), res.body().clone()));
         });
 
         let request_body =
@@ -298,5 +299,194 @@ mod tests {
         );
 
         mock.assert_async().await;
+    }
+
+    // 非JSONレスポンス: on_response の body() が生テキストを Value::String で受け取る
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_non_json -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_callbacks_non_json() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        // make_mock は常にJSONを返すため、非JSONボディはここで直接組む
+        let mock = server
+            .mock("POST", "/v2/bot/message/push")
+            .with_status(502)
+            .with_header("content-type", "text/plain")
+            .with_body("Bad Gateway")
+            .create_async()
+            .await;
+
+        let captured = Arc::new(Mutex::new(Vec::<(u16, serde_json::Value)>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_response(move |_req, res| {
+            c.lock()
+                .unwrap()
+                .push((res.status_code().as_u16(), res.body().clone()));
+        });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await;
+
+        mock.assert_async().await;
+
+        // コールバックは生テキストを Value::String で観測し、status は 502
+        let captured = captured.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].0, 502);
+        assert_eq!(captured[0].1, json!("Bad Gateway"));
+
+        // 非JSONなので execute は OtherText を返す
+        let err = res.unwrap_err();
+        assert!(matches!(*err, Error::OtherText(_, _, _)));
+    }
+
+    // 409 CONFLICT: retry_key 付き push は成功扱いだが、コールバックは 409 を観測する
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_conflict -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_callbacks_conflict() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        // 409 でも「配信済み」扱いとするため、ボディは正常な sentMessages 形式で返す
+        let mock = server
+            .mock("POST", "/v2/bot/message/push")
+            .with_status(409)
+            .with_header("content-type", "application/json")
+            .with_body(json!({"sentMessages": [{"id": "msg123"}]}).to_string())
+            .create_async()
+            .await;
+
+        let captured = Arc::new(Mutex::new(Vec::<u16>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            try_count: Some(2),
+            ..Default::default()
+        }
+        .with_on_response(move |_req, res| {
+            c.lock().unwrap().push(res.status_code().as_u16());
+        });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            Some("retry-key-1".to_string()),
+        )
+        .await;
+
+        mock.assert_async().await;
+
+        // コールバックは 409 を観測
+        assert_eq!(*captured.lock().unwrap(), vec![409]);
+        // retry_key 付き 409 は配信済みとして Ok 扱い
+        assert!(res.is_ok(), "409 with retry_key is treated as delivered");
+    }
+
+    // リトライキーのヘッダー捕捉: clone が retry-key 付与「後」であることを保護
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_retry_key_header -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_callbacks_retry_key_header() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        // 200 を返すので 1 回で成功するが、try_count=2 なので retry-key ヘッダーは付く
+        let mock = make_mock(&mut server, Some(MockParamsBuilder::default())).await;
+
+        let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            try_count: Some(2),
+            ..Default::default()
+        }
+        .with_on_request(move |log| {
+            let has_retry_key = log
+                .headers()
+                .is_some_and(|h| h.contains_key("x-line-retry-key"));
+            c.lock().unwrap().push(has_retry_key);
+        });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            Some("retry-key-1".to_string()),
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+
+        // 捕捉したリクエストヘッダーに X-Line-Retry-Key が含まれる
+        assert_eq!(*captured.lock().unwrap(), vec![true]);
+    }
+
+    // on_response のみ設定: need_log は両者の OR なのでリクエストヘッダーは捕捉される
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_response_only -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_callbacks_response_only() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mock = make_mock(&mut server, Some(MockParamsBuilder::default())).await;
+
+        let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        // on_request は設定せず on_response のみ
+        .with_on_response(move |req, _res| {
+            let has_auth = req
+                .headers()
+                .is_some_and(|h| h.contains_key("authorization"));
+            c.lock().unwrap().push(has_auth);
+        });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+
+        // on_request 未設定でもリクエストヘッダーは捕捉される
+        assert_eq!(*captured.lock().unwrap(), vec![true]);
     }
 }
