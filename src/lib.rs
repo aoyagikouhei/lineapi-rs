@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -102,34 +103,57 @@ impl<'a> LineRequestLog<'a> {
     }
 }
 
+/// レスポンスボディの内部表現。
+///
+/// JSON としてパースできたか否かを**型**で表すことで、「JSON 扱いなのに中身は生テキスト」
+/// のような不整合な状態を表現不能にする。コールバック側で分岐なしに `Value` として扱いたい
+/// 場合は [`LineResponseLog::as_value`] を使う。
+#[derive(Debug, Clone)]
+pub enum ResponseBody {
+    /// JSON としてパースできたボディ。
+    Json(serde_json::Value),
+    /// JSON としてパースできなかった生テキストのボディ。
+    Raw(String),
+}
+
 /// レスポンス受信後にコールバックへ渡される情報。
 ///
-/// ボディは `enum`(例: `Json`/`Raw`)ではなく、`body()` で一律 `&serde_json::Value` を
-/// 返し、JSON としてパースできたかを [`body_was_json`](Self::body_was_json) で分離する設計。
-/// こうすることでログ出力やシリアライズ側が分岐なしに `Value` を扱え、非 JSON ボディも
-/// `Value::String` として一様に観測できる。
+/// ボディは [`ResponseBody`] enum(`Json` / `Raw`)で表現し、JSON としてパースできたかを
+/// **型**で区別する。`body_was_json` が真なのに中身が生テキスト、といった不整合な状態は
+/// 表現できない。ログ出力やシリアライズ側で分岐なしに `Value` として扱いたい場合は
+/// [`as_value`](Self::as_value) を使うと、JSON はそのまま、非 JSON は `Value::String` で
+/// 包んだ値が一律で得られる。
+///
+/// レスポンスヘッダーは秘匿情報を含まない前提のため、[`LineRequestLog`] と異なり
+/// `headers_redacted` 相当のヘルパーは提供しない(本クレートが観測するレスポンスヘッダーに
+/// `Authorization` のような秘匿ヘッダーは無い)。
 #[derive(Debug, Clone)]
 pub struct LineResponseLog<'a> {
     headers: &'a HeaderMap,
-    body: &'a serde_json::Value,
+    body: ResponseBody,
     status_code: StatusCode,
-    body_was_json: bool,
 }
 
 impl<'a> LineResponseLog<'a> {
     /// レスポンスヘッダー。
+    ///
+    /// `on_response` コールバック設定時のみ複製・保持される(未設定時は空)。この
+    /// アクセサは `on_response` 経路からのみ到達する。
     pub fn headers(&self) -> &'a HeaderMap {
         self.headers
     }
 
-    /// レスポンスボディ。
+    /// レスポンスボディを `serde_json::Value` として観測する。
     ///
-    /// JSON としてパースできた場合はその値、できなかった場合は生テキストを
-    /// `Value::String` で包んだ値が渡される。両者を区別したい場合は
-    /// [`body_was_json`](Self::body_was_json) を参照すること(JSON 文字列ボディも
+    /// JSON としてパースできた場合はその値を借用で([`Cow::Borrowed`])、できなかった場合は
+    /// 生テキストを `Value::String` で包んだ値を所有で([`Cow::Owned`])返す。両者を区別したい
+    /// 場合は [`body_was_json`](Self::body_was_json) を参照すること(JSON 文字列ボディも
     /// `Value::String` になるため、値の形だけでは区別できない)。
-    pub fn body(&self) -> &'a serde_json::Value {
-        self.body
+    pub fn as_value(&self) -> Cow<'_, serde_json::Value> {
+        match &self.body {
+            ResponseBody::Json(value) => Cow::Borrowed(value),
+            ResponseBody::Raw(text) => Cow::Owned(serde_json::Value::String(text.clone())),
+        }
     }
 
     /// レスポンスのステータスコード。
@@ -139,17 +163,17 @@ impl<'a> LineResponseLog<'a> {
 
     /// レスポンスボディが JSON としてパースできたかどうか。
     ///
-    /// `false` の場合、[`body`](Self::body) は生テキストを `Value::String` で包んだ値。
+    /// `false` の場合、[`as_value`](Self::as_value) は生テキストを `Value::String` で包んだ値。
     pub fn body_was_json(&self) -> bool {
-        self.body_was_json
+        matches!(self.body, ResponseBody::Json(_))
     }
 
-    /// ボディ([`body`](Self::body))の既知の秘匿キーを `***` に置換した複製を返す。
+    /// ボディ([`as_value`](Self::as_value))の既知の秘匿キーを `***` に置換した複製を返す。
     ///
     /// マスク対象キーは [`REDACTED_BODY_KEYS`] を参照。token レスポンスの
     /// `access_token` / `refresh_token` / `id_token` などをマスクする。
     pub fn body_redacted(&self) -> serde_json::Value {
-        redact_body(self.body)
+        redact_body(&self.as_value())
     }
 }
 
@@ -224,9 +248,18 @@ pub(crate) fn serialize_log_body<T: Serialize>(value: &T) -> serde_json::Value {
 /// コールバックは利用側のコードであり、内部で panic し得る。ログは観測のための副経路で
 /// あるべきなので、panic を捕捉してログ出力し、API 呼び出し自体は継続させる。
 fn run_log_callback(label: &str, f: impl FnOnce()) {
-    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).is_err() {
+    if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        // panic ペイロード(通常は &str / String)を取り出してログに残す。content-free な
+        // 「panicした」だけのログは事後調査の役に立たないため、メッセージ本体を保持する。
+        let msg = payload
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<non-string panic payload>".to_string());
         tracing::error!(
-            "LineOptions {label} callback panicked; ignored to keep the API call alive"
+            callback = label,
+            panic = %msg,
+            "LineOptions callback panicked; ignored to keep the API call alive"
         );
     }
 }
@@ -249,10 +282,10 @@ pub type OnResponse = Arc<dyn Fn(&LineRequestLog, &LineResponseLog) + Send + Syn
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct LineOptions {
-    pub prefix_url: Option<String>,
-    pub timeout_duration: Option<Duration>,
-    pub try_count: Option<u8>,
-    pub retry_duration: Option<Duration>,
+    pub(crate) prefix_url: Option<String>,
+    pub(crate) timeout_duration: Option<Duration>,
+    pub(crate) try_count: Option<u8>,
+    pub(crate) retry_duration: Option<Duration>,
     /// リクエスト送信直前に呼ばれるコールバック(指定時のみ)。
     #[serde(skip)]
     pub(crate) on_request: Option<OnRequest>,
@@ -289,6 +322,21 @@ impl LineOptions {
         self.timeout_duration.unwrap_or(Duration::from_secs(0))
     }
 
+    /// 実際に使用されるベース URL を返す。
+    ///
+    /// [`with_prefix_url`](Self::with_prefix_url) 未設定時は環境変数 `LINE_API_PREFIX_URL`、
+    /// それも無ければデフォルトの `https://api.line.me` を返す([`make_url`] と同じ解決順)。
+    pub fn get_prefix_url(&self) -> String {
+        self.resolve_prefix_url()
+    }
+
+    /// `prefix_url` の実効値を解決する(`with_prefix_url` → 環境変数 → デフォルト)。
+    pub(crate) fn resolve_prefix_url(&self) -> String {
+        self.prefix_url
+            .clone()
+            .unwrap_or_else(|| std::env::var(ENV_KEY).unwrap_or_else(|_| PREFIX_URL.to_string()))
+    }
+
     /// API のベース URL を設定する。
     ///
     /// `LineOptions` は `#[non_exhaustive]` のため、外部クレートからは構造体リテラルでは
@@ -306,7 +354,8 @@ impl LineOptions {
 
     /// 試行回数(リトライ含む)を設定する。
     ///
-    /// `0` を渡した場合は `1` として扱う(最低 1 回は試行する)。
+    /// `0` を渡しても保存値はそのまま `0` だが、実行時に [`get_try_count`](Self::get_try_count)
+    /// が最低 1 回として正規化する(設定時ではなく読み取り時の正規化)。
     pub fn with_try_count(mut self, try_count: u8) -> Self {
         self.try_count = Some(try_count);
         self
@@ -320,12 +369,15 @@ impl LineOptions {
 
     /// リクエスト送信直前に呼ばれるコールバックを設定する。
     ///
-    /// 渡される [`LineRequestLog`] には秘匿情報(`Authorization` ヘッダーや OAuth 系の
-    /// ボディ)が含まれ得る。ログ出力時のマスクについては [`LineRequestLog`] の
-    /// ドキュメントを参照。
+    /// **⚠ 秘匿情報に注意**: コールバックに渡される [`LineRequestLog`] は**マスクされていない
+    /// 生の値**であり、`Authorization` ヘッダーや OAuth 系ボディの秘匿情報を含み得る。ログ等へ
+    /// 出力する前に必ず [`headers_redacted`](LineRequestLog::headers_redacted) /
+    /// [`body_redacted`](LineRequestLog::body_redacted) でマスクすること(詳細は
+    /// [`LineRequestLog`] のドキュメント参照)。
     ///
-    /// コールバックは API 呼び出しのリクエスト経路で同期的に実行される。内部で panic した
-    /// 場合は捕捉してログ出力し、API 呼び出し自体は継続する(ログは観測の副経路に徹する)。
+    /// コールバックは API 呼び出しのリクエスト経路で同期的に実行される。リトライ時は**試行
+    /// ごと**に発火する(論理的な 1 回の呼び出しでも `try_count` 回呼ばれ得る)。内部で panic
+    /// した場合は捕捉してログ出力し、API 呼び出し自体は継続する(ログは観測の副経路に徹する)。
     /// ただしコールバックが共有ロックを保持したまま panic すると、そのロックは poison され
     /// 得る(panic 捕捉では巻き戻せない)ため、引き続き panic させないことを推奨する。
     pub fn with_on_request(mut self, f: impl Fn(&LineRequestLog) + Send + Sync + 'static) -> Self {
@@ -335,12 +387,15 @@ impl LineOptions {
 
     /// レスポンス受信後に呼ばれるコールバックを設定する。
     ///
-    /// 渡される [`LineRequestLog`] / [`LineResponseLog`] には秘匿情報(`Authorization`
-    /// ヘッダーや OAuth 系のボディ/レスポンス)が含まれ得る。ログ出力時のマスクについては
-    /// [`LineRequestLog`] / [`LineResponseLog`] のドキュメントを参照。
+    /// **⚠ 秘匿情報に注意**: コールバックに渡される [`LineRequestLog`] / [`LineResponseLog`]
+    /// は**マスクされていない生の値**であり、`Authorization` ヘッダーや OAuth 系のボディ/
+    /// レスポンス(token レスポンスの `access_token` 等)の秘匿情報を含み得る。ログ等へ出力
+    /// する前に必ず各 `*_redacted` ヘルパーでマスクすること(詳細は [`LineRequestLog`] /
+    /// [`LineResponseLog`] のドキュメント参照)。
     ///
-    /// コールバックは API 呼び出しのレスポンス経路で同期的に実行される。内部で panic した
-    /// 場合は捕捉してログ出力し、API 呼び出し自体は継続する(ログは観測の副経路に徹する)。
+    /// コールバックは API 呼び出しのレスポンス経路で同期的に実行される。リトライ時は**試行
+    /// ごと**に発火する(論理的な 1 回の呼び出しでも `try_count` 回呼ばれ得る)。内部で panic
+    /// した場合は捕捉してログ出力し、API 呼び出し自体は継続する(ログは観測の副経路に徹する)。
     /// ただしコールバックが共有ロックを保持したまま panic すると、そのロックは poison され
     /// 得る(panic 捕捉では巻き戻せない)ため、引き続き panic させないことを推奨する。
     pub fn with_on_response(
@@ -353,13 +408,7 @@ impl LineOptions {
 }
 
 pub(crate) fn make_url(postfix_url: &str, options: &LineOptions) -> String {
-    let default_prefix_url = std::env::var(ENV_KEY).unwrap_or_else(|_| PREFIX_URL.to_string());
-    let prefix_url = if let Some(prefix_url) = &options.prefix_url {
-        prefix_url
-    } else {
-        &default_prefix_url
-    };
-    format!("{prefix_url}{postfix_url}")
+    format!("{}{postfix_url}", options.resolve_prefix_url())
 }
 
 pub(crate) fn apply_auth(builder: RequestBuilder, channel_access_token: &str) -> RequestBuilder {
@@ -381,13 +430,28 @@ pub(crate) fn is_standard_retry(status_code: StatusCode) -> bool {
 
 pub(crate) fn make_line_header(response: &Response) -> LineResponseHeader {
     let headers: &header::HeaderMap = response.headers();
+    // ヘッダーが存在するのに非 ASCII 等で to_str() に失敗した場合は、空文字に潰す前に
+    // warn を出す。サポート照会で最重要の request id が「欠落」と「パース失敗」で
+    // 区別できないまま無言で空になるのを避ける(値自体は従来通り空文字)。
     let request_id = headers
         .get("X-Line-Request-Id")
-        .map(|it| it.to_str().unwrap_or(""))
+        .map(|it| {
+            it.to_str().unwrap_or_else(|_| {
+                tracing::warn!("X-Line-Request-Id present but not valid ASCII; recording empty");
+                ""
+            })
+        })
         .unwrap_or("");
-    let accepted_request_id = headers
-        .get("X-Line-Accepted-Request-Id")
-        .map(|it| it.to_str().unwrap_or("").to_string());
+    let accepted_request_id = headers.get("X-Line-Accepted-Request-Id").map(|it| {
+        it.to_str()
+            .unwrap_or_else(|_| {
+                tracing::warn!(
+                    "X-Line-Accepted-Request-Id present but not valid ASCII; recording empty"
+                );
+                ""
+            })
+            .to_string()
+    });
     LineResponseHeader {
         request_id: request_id.to_owned(),
         accepted_request_id,
@@ -399,7 +463,7 @@ pub(crate) fn calc_retry_duration(
     try_count: u32,
     rng: &mut StdRng,
 ) -> Duration {
-    // Jistter
+    // Jitter
     let jitter = Duration::from_millis(rng.random_range(0..100));
 
     // exponential backoff
@@ -458,12 +522,11 @@ pub(crate) async fn execute_api_raw(
     let json_result = serde_json::from_str::<serde_json::Value>(&text);
 
     if let Some(cb) = &options.on_response {
-        // JSONならパース結果、非JSONなら生テキストを文字列Valueで渡す
-        let response_value = json_result
-            .as_ref()
-            .ok()
-            .cloned()
-            .unwrap_or_else(|| serde_json::Value::String(text.clone()));
+        // JSONならパース結果、非JSONなら生テキストを ResponseBody enum で渡す
+        let response_body = match json_result.as_ref() {
+            Ok(value) => ResponseBody::Json(value.clone()),
+            Err(_) => ResponseBody::Raw(text.clone()),
+        };
         run_log_callback("on_response", || {
             cb(
                 &LineRequestLog {
@@ -472,9 +535,8 @@ pub(crate) async fn execute_api_raw(
                 },
                 &LineResponseLog {
                     headers: &response_headers,
-                    body: &response_value,
+                    body: response_body,
                     status_code,
-                    body_was_json: json_result.is_ok(),
                 },
             );
         });
@@ -530,7 +592,6 @@ where
         if let Some(retry_key) = &retry_key
             && try_count > 1
         {
-            // リトライ回数がある場合はリトライキーをヘッダーに追加
             builder = builder.header(HEADER_RETRY_KEY, retry_key);
         }
         match execute_api_raw(builder, retry_key.is_some(), options, &request_value).await {
@@ -698,4 +759,75 @@ mod tests {
         assert!(result.is_ok(), "callback panic must not fail the API call");
         mock.assert_async().await;
     }
+
+    // get_try_count は 0 を 1 に正規化する(0 のままだとリトライループが回らず
+    // 不透明な Error::Invalid("fail loop") を返してしまうため)。
+    #[test]
+    fn test_get_try_count_normalizes_zero() {
+        assert_eq!(LineOptions::default().get_try_count(), 1, "None は 1");
+        assert_eq!(
+            LineOptions::default().with_try_count(0).get_try_count(),
+            1,
+            "0 は 1 に正規化"
+        );
+        assert_eq!(
+            LineOptions::default().with_try_count(3).get_try_count(),
+            3,
+            "それ以外はそのまま"
+        );
+        // 保存値は正規化しない(正規化は読み取り時のみ)。
+        assert_eq!(LineOptions::default().with_try_count(0).try_count, Some(0));
+    }
+
+    // on_request / on_response は #[serde(skip)] のため、serialize -> deserialize で
+    // コールバックは失われるが、他のフィールドは保持される。
+    #[test]
+    fn test_line_options_serde_round_trip_drops_callbacks() {
+        let options = LineOptions::default()
+            .with_prefix_url("https://example.com")
+            .with_try_count(3)
+            .with_on_request(|_log| {})
+            .with_on_response(|_req, _res| {});
+        assert!(options.on_request.is_some());
+
+        let json = serde_json::to_string(&options).unwrap();
+        let restored: LineOptions = serde_json::from_str(&json).unwrap();
+
+        // 設定フィールドは保持される
+        assert_eq!(restored.prefix_url.as_deref(), Some("https://example.com"));
+        assert_eq!(restored.try_count, Some(3));
+        // コールバックは落ちる
+        assert!(restored.on_request.is_none());
+        assert!(restored.on_response.is_none());
+    }
+
+    // headers が None のとき headers()/headers_redacted() は共に None を返す
+    // (「ヘッダーが空」ではなく「捕捉に失敗」を表す契約)。
+    #[test]
+    fn test_request_log_headers_none_contract() {
+        let body = serde_json::Value::Null;
+        let log = LineRequestLog {
+            headers: None,
+            body: &body,
+        };
+        assert!(log.headers().is_none());
+        assert!(log.headers_redacted().is_none());
+    }
+
+    // REDACTED_BODY_KEYS の汎用キー `code` は、レスポンス側の正当な `code` フィールドも
+    // `***` に潰す(意図的な security-first 挙動)。仕様であることを固定する。
+    #[test]
+    fn test_redact_body_masks_generic_code_in_response() {
+        let response = serde_json::json!({
+            "message": "invalid request",
+            "code": "40000",
+        });
+        let redacted = redact_body(&response);
+        assert_eq!(redacted["code"], "***", "汎用 code も意図的にマスクされる");
+        assert_eq!(redacted["message"], "invalid request");
+    }
+
+    // 補足: レスポンスボディの読取失敗(`response.text()` のエラー)が Error::Reqwest として
+    // 伝播する経路(execute_api_raw)は、mockito では決定的に途中切断を起こしにくいため
+    // ユニットテスト化していない。コード上は `.map_err(Error::Reqwest)?` で握り潰さず伝播する。
 }

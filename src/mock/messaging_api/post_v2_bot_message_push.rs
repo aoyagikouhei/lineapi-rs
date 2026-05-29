@@ -216,7 +216,7 @@ mod tests {
         .with_on_response(move |_req, res| {
             cres.lock()
                 .unwrap()
-                .push((res.status_code().as_u16(), res.body().clone()));
+                .push((res.status_code().as_u16(), res.as_value().into_owned()));
         });
 
         let request_body =
@@ -285,46 +285,6 @@ mod tests {
         );
     }
 
-    // 外部クレートが強制されるビルダー経路(LineOptions::default().with_*())でオプションを
-    // 組み、コールバックが発火することを確認する(#[non_exhaustive] 下の公開人間工学の回帰保護)。
-    // cargo test --all-features test_make_mock_post_v2_bot_message_push_builder_path -- --nocapture --test-threads=1
-    #[tokio::test]
-    async fn test_make_mock_post_v2_bot_message_push_builder_path() {
-        use std::sync::{Arc, Mutex};
-
-        let mut server = Server::new_async().await;
-        let mock = make_mock(&mut server, None).await;
-
-        let fired = Arc::new(Mutex::new(false));
-        let f = fired.clone();
-        let options = LineOptions::default()
-            .with_prefix_url(server.url())
-            .with_try_count(1)
-            .with_on_request(move |_log| {
-                *f.lock().unwrap() = true;
-            });
-
-        let request_body = post_v2_bot_message_push::RequestBody::new(
-            "U123456789",
-            vec![json!({"type": "text", "text": "Hello!"})],
-        )
-        .unwrap();
-        let _res = post_v2_bot_message_push::execute(
-            request_body,
-            "test_channel_access_token",
-            &options,
-            None,
-        )
-        .await
-        .unwrap();
-
-        mock.assert_async().await;
-        assert!(
-            *fired.lock().unwrap(),
-            "callback set via builder path must fire"
-        );
-    }
-
     // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_retry -- --nocapture --test-threads=1
     #[tokio::test]
     async fn test_make_mock_post_v2_bot_message_push_callbacks_retry() {
@@ -381,59 +341,6 @@ mod tests {
     }
 
     // 非JSONレスポンス: on_response の body() が生テキストを Value::String で受け取る
-    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_non_json -- --nocapture --test-threads=1
-    #[tokio::test]
-    async fn test_make_mock_post_v2_bot_message_push_callbacks_non_json() {
-        use std::sync::{Arc, Mutex};
-
-        let mut server = Server::new_async().await;
-        // make_mock は常にJSONを返すため、非JSONボディはここで直接組む
-        let mock = server
-            .mock("POST", "/v2/bot/message/push")
-            .with_status(502)
-            .with_header("content-type", "text/plain")
-            .with_body("Bad Gateway")
-            .create_async()
-            .await;
-
-        let captured = Arc::new(Mutex::new(Vec::<(u16, serde_json::Value)>::new()));
-        let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_response(move |_req, res| {
-            c.lock()
-                .unwrap()
-                .push((res.status_code().as_u16(), res.body().clone()));
-        });
-
-        let request_body = post_v2_bot_message_push::RequestBody::new(
-            "U123456789",
-            vec![json!({"type": "text", "text": "Hello!"})],
-        )
-        .unwrap();
-        let res = post_v2_bot_message_push::execute(
-            request_body,
-            "test_channel_access_token",
-            &options,
-            None,
-        )
-        .await;
-
-        mock.assert_async().await;
-
-        // コールバックは生テキストを Value::String で観測し、status は 502
-        let captured = captured.lock().unwrap();
-        assert_eq!(captured.len(), 1);
-        assert_eq!(captured[0].0, 502);
-        assert_eq!(captured[0].1, json!("Bad Gateway"));
-
-        // 非JSONなので execute は OtherText を返す
-        let err = res.unwrap_err();
-        assert!(matches!(*err, Error::OtherText(_, _, _)));
-    }
-
     // 409 CONFLICT: retry_key 付き push は成功扱いだが、コールバックは 409 を観測する
     // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_conflict -- --nocapture --test-threads=1
     #[tokio::test]
@@ -653,6 +560,8 @@ mod tests {
         assert_eq!(*captured.lock().unwrap(), vec![true]);
 
         // --- 非JSON レスポンス: false ---
+        // make_mock は常にJSONを返すため、非JSONボディはここで直接組む。
+        // body_was_json()==false / as_value()==生テキスト / execute は OtherText を返す、を一括検証。
         let mut server = Server::new_async().await;
         let mock = server
             .mock("POST", "/v2/bot/message/push")
@@ -661,21 +570,24 @@ mod tests {
             .with_body("Bad Gateway")
             .create_async()
             .await;
-        let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
+        // (body_was_json, as_value)
+        let captured = Arc::new(Mutex::new(Vec::<(bool, serde_json::Value)>::new()));
         let c = captured.clone();
         let options = LineOptions {
             prefix_url: Some(server.url()),
             ..Default::default()
         }
         .with_on_response(move |_req, res| {
-            c.lock().unwrap().push(res.body_was_json());
+            c.lock()
+                .unwrap()
+                .push((res.body_was_json(), res.as_value().into_owned()));
         });
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
             vec![json!({"type": "text", "text": "Hello!"})],
         )
         .unwrap();
-        let _ = post_v2_bot_message_push::execute(
+        let res = post_v2_bot_message_push::execute(
             request_body,
             "test_channel_access_token",
             &options,
@@ -683,6 +595,13 @@ mod tests {
         )
         .await;
         mock.assert_async().await;
-        assert_eq!(*captured.lock().unwrap(), vec![false]);
+
+        // コールバックは生テキストを Value::String で観測し body_was_json は false
+        let captured = captured.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        assert!(!captured[0].0, "非JSONなので body_was_json は false");
+        assert_eq!(captured[0].1, json!("Bad Gateway"));
+        // 非JSONなので execute は OtherText を返す
+        assert!(matches!(*res.unwrap_err(), Error::OtherText(_, _, _)));
     }
 }

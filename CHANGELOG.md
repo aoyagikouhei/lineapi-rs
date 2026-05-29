@@ -3,9 +3,11 @@
 ### v0.9.0 (2026/05/29)
 #### Breaking Change
 - add fields to `LineOptions` and mark it `#[non_exhaustive]`. From outside the crate it can no longer be built with a struct literal (including `..Default::default()`); use `LineOptions::default()` together with the `with_*` builder methods instead
+- `LineOptions` config fields (`prefix_url`, `timeout_duration`, `try_count`, `retry_duration`) are now `pub(crate)`; read them via `get_prefix_url` / `get_timeout_duration` / `get_try_count` / `get_retry_duration` and set them via the `with_*` builders
+- `LineResponseLog::body()` is replaced by `as_value()`, which returns `Cow<serde_json::Value>` (borrowed for JSON bodies, an owned `Value::String` for raw bodies). The body is now modeled by the `ResponseBody { Json, Raw }` enum, so a "was-JSON" flag can no longer disagree with the stored body
 #### New Features
 - add on_request / on_response callbacks to LineOptions for request/response logging
-  - `LineRequestLog` / `LineResponseLog` expose their fields via accessor methods (`headers()`, `body()`, `status_code()`, `body_was_json()`)
+  - `LineRequestLog` exposes its fields via accessor methods (`headers()`, `body()`); `LineResponseLog` via (`headers()`, `as_value()`, `status_code()`, `body_was_json()`)
   - `LineRequestLog::headers()` returns `Option<&HeaderMap>` so a header-capture failure is distinguishable from empty headers
   - `LineRequestLog::headers_redacted()` returns a header copy with the `Authorization` value masked
   - `LineRequestLog::body_redacted()` / `LineResponseLog::body_redacted()` mask known secret body keys (`client_secret`, `access_token`, `refresh_token`, `code`, `code_verifier`, `id_token`, `userAccessToken`; see `REDACTED_BODY_KEYS`)
@@ -13,6 +15,8 @@
   - request-body serialization failures are surfaced as `{"_serialize_error": "..."}` rather than collapsing to `Value::Null` (which means "no body")
   - response body-read failures now propagate as `Error::Reqwest` instead of being swallowed into an empty body
   - add `with_prefix_url` / `with_timeout_duration` / `with_try_count` / `with_retry_duration` builders
+  - add `get_prefix_url()` returning the effective base URL (honoring `with_prefix_url`, then `LINE_API_PREFIX_URL`, then the default)
+  - callbacks receive UN-redacted logs; mask with the `*_redacted()` helpers before logging. Callbacks fire per retry attempt (up to `try_count` times)
   - note: callbacks are `#[serde(skip)]`, so serializing then deserializing a `LineOptions` drops them; set them via `with_on_request` / `with_on_response`
   - a panic inside an `on_request` / `on_response` callback is caught and logged via `tracing::error!`; the API call keeps running (logging stays a side-channel)
   - `with_try_count(0)` is treated as `1` (at least one attempt) instead of returning an opaque error
