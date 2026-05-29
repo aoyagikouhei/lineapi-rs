@@ -184,4 +184,119 @@ mod tests {
 
         mock.assert_async().await;
     }
+
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_callbacks() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let messages = vec![json!({"type": "text", "text": "Hello World!"})];
+        let mut builder = MockParamsBuilder::default();
+        builder.messages(messages.clone());
+        let mock = make_mock(&mut server, Some(builder)).await;
+
+        // (has_authorization_header, request_body)
+        let captured_req = Arc::new(Mutex::new(Vec::<(bool, serde_json::Value)>::new()));
+        // (status_code, response_body)
+        let captured_res = Arc::new(Mutex::new(Vec::<(u16, serde_json::Value)>::new()));
+
+        let creq = captured_req.clone();
+        let cres = captured_res.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_request(move |log| {
+            creq.lock()
+                .unwrap()
+                .push((log.headers.contains_key("authorization"), log.body.clone()));
+        })
+        .with_on_response(move |_req, res| {
+            cres.lock()
+                .unwrap()
+                .push((res.status_code.as_u16(), res.body.clone()));
+        });
+
+        let request_body =
+            post_v2_bot_message_push::RequestBody::new("U123456789", messages).unwrap();
+        let _res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+
+        // on_request: 1回、Authorizationヘッダー付き、bodyにto/messagesを含む
+        let reqs = captured_req.lock().unwrap();
+        assert_eq!(reqs.len(), 1);
+        assert!(reqs[0].0, "authorization header must be present");
+        assert_eq!(reqs[0].1["to"], json!("U123456789"));
+        assert!(reqs[0].1["messages"].is_array());
+
+        // on_response: 1回、status 200、レスポンスJSONを含む
+        let ress = captured_res.lock().unwrap();
+        assert_eq!(ress.len(), 1);
+        assert_eq!(ress[0].0, 200);
+        assert!(ress[0].1["sentMessages"].is_array());
+    }
+
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_callbacks_retry -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_callbacks_retry() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mut builder = MockParamsBuilder::default();
+        builder.status_code(500usize);
+        let mock = make_mock(&mut server, Some(builder)).await.expect(3);
+
+        let req_count = Arc::new(Mutex::new(0usize));
+        let res_count = Arc::new(Mutex::new(0usize));
+        let rc = req_count.clone();
+        let sc = res_count.clone();
+
+        // try_count=3, retry_duration=0 (待機なし) で試行ごとに発火することを確認
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            try_count: Some(3),
+            ..Default::default()
+        }
+        .with_on_request(move |_log| {
+            *rc.lock().unwrap() += 1;
+        })
+        .with_on_response(move |_req, _res| {
+            *sc.lock().unwrap() += 1;
+        });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            *req_count.lock().unwrap(),
+            3,
+            "on_request fires per attempt"
+        );
+        assert_eq!(
+            *res_count.lock().unwrap(),
+            3,
+            "on_response fires per attempt"
+        );
+
+        mock.assert_async().await;
+    }
 }

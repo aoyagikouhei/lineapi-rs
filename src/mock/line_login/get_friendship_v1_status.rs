@@ -77,7 +77,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(res.0.friend_flag, true);
+        assert!(res.0.friend_flag);
 
         mock.assert_async().await;
     }

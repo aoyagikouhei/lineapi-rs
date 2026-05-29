@@ -46,6 +46,7 @@ pub async fn execute(
         options,
         is_standard_retry,
         None,
+        serde_json::to_value(request_body).unwrap_or_default(),
     )
     .await
 }

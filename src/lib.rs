@@ -1,9 +1,10 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, rngs::StdRng};
 use reqwest::{
     RequestBuilder, Response, StatusCode,
-    header::{self, AUTHORIZATION},
+    header::{self, AUTHORIZATION, HeaderMap},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -26,12 +27,55 @@ pub struct LineResponseHeader {
     pub accepted_request_id: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+/// リクエスト送信直前にコールバックへ渡される情報。
+///
+/// `headers` には `Authorization: Bearer <token>` が含まれるため、ログ出力時は
+/// アクセストークンが露出しないようマスクすること。
+#[derive(Debug, Clone)]
+pub struct LineRequestLog<'a> {
+    pub headers: &'a HeaderMap,
+    pub body: &'a serde_json::Value,
+}
+
+/// レスポンス受信後にコールバックへ渡される情報。
+#[derive(Debug, Clone)]
+pub struct LineResponseLog<'a> {
+    pub headers: &'a HeaderMap,
+    pub body: &'a serde_json::Value,
+    pub status_code: StatusCode,
+}
+
+/// リクエスト送信直前に呼ばれるコールバック。
+pub type OnRequest = Arc<dyn Fn(&LineRequestLog) + Send + Sync>;
+
+/// レスポンス受信後に呼ばれるコールバック。
+pub type OnResponse = Arc<dyn Fn(&LineRequestLog, &LineResponseLog) + Send + Sync>;
+
+#[derive(Default, Clone, Serialize, Deserialize)]
 pub struct LineOptions {
     pub prefix_url: Option<String>,
     pub timeout_duration: Option<Duration>,
     pub try_count: Option<u8>,
     pub retry_duration: Option<Duration>,
+    /// リクエスト送信直前に呼ばれるコールバック(指定時のみ)。
+    #[serde(skip)]
+    pub on_request: Option<OnRequest>,
+    /// レスポンス受信後に呼ばれるコールバック(指定時のみ)。
+    #[serde(skip)]
+    pub on_response: Option<OnResponse>,
+}
+
+impl std::fmt::Debug for LineOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineOptions")
+            .field("prefix_url", &self.prefix_url)
+            .field("timeout_duration", &self.timeout_duration)
+            .field("try_count", &self.try_count)
+            .field("retry_duration", &self.retry_duration)
+            .field("on_request", &self.on_request.as_ref().map(|_| "Fn"))
+            .field("on_response", &self.on_response.as_ref().map(|_| "Fn"))
+            .finish()
+    }
 }
 
 impl LineOptions {
@@ -45,6 +89,27 @@ impl LineOptions {
 
     pub fn get_timeout_duration(&self) -> Duration {
         self.timeout_duration.unwrap_or(Duration::from_secs(0))
+    }
+
+    /// リクエスト送信直前に呼ばれるコールバックを設定する。
+    ///
+    /// 渡される `LineRequestLog.headers` には `Authorization` ヘッダー
+    /// (アクセストークン)が含まれる点に注意。
+    pub fn with_on_request(mut self, f: impl Fn(&LineRequestLog) + Send + Sync + 'static) -> Self {
+        self.on_request = Some(Arc::new(f));
+        self
+    }
+
+    /// レスポンス受信後に呼ばれるコールバックを設定する。
+    ///
+    /// 渡される `LineRequestLog.headers` には `Authorization` ヘッダー
+    /// (アクセストークン)が含まれる点に注意。
+    pub fn with_on_response(
+        mut self,
+        f: impl Fn(&LineRequestLog, &LineResponseLog) + Send + Sync + 'static,
+    ) -> Self {
+        self.on_response = Some(Arc::new(f));
+        self
     }
 }
 
@@ -108,15 +173,66 @@ pub(crate) fn calc_retry_duration(
 pub(crate) async fn execute_api_raw(
     builder: RequestBuilder,
     allow_conflict: bool,
+    options: &LineOptions,
+    request_value: &serde_json::Value,
 ) -> Result<(serde_json::Value, LineResponseHeader, StatusCode), Box<Error>> {
+    let need_log = options.on_request.is_some() || options.on_response.is_some();
+
+    // リクエストヘッダーを取得(コールバック設定時のみ)。
+    // try_clone -> build で Request を得て headers を clone する。
+    // リトライキー付与後の builder を受け取るので X-Line-Retry-Key も含まれる。
+    let request_headers = if need_log {
+        builder
+            .try_clone()
+            .and_then(|b| b.build().ok())
+            .map(|req| req.headers().clone())
+            .unwrap_or_default()
+    } else {
+        HeaderMap::new()
+    };
+
+    if let Some(cb) = &options.on_request {
+        cb(&LineRequestLog {
+            headers: &request_headers,
+            body: request_value,
+        });
+    }
+
     let response = builder
         .send()
         .await
         .map_err(|err| Box::new(Error::Reqwest(err)))?;
     let status_code = response.status();
     let line_header = make_line_header(&response);
+    let response_headers = if options.on_response.is_some() {
+        response.headers().clone()
+    } else {
+        HeaderMap::new()
+    };
     let text = response.text().await.unwrap_or_default();
-    let Ok(json) = serde_json::from_str(&text) else {
+    let json_result = serde_json::from_str::<serde_json::Value>(&text);
+
+    if let Some(cb) = &options.on_response {
+        // JSONならパース結果、非JSONなら生テキストを文字列Valueで渡す
+        let response_value = json_result
+            .as_ref()
+            .ok()
+            .cloned()
+            .unwrap_or_else(|| serde_json::Value::String(text.clone()));
+        cb(
+            &LineRequestLog {
+                headers: &request_headers,
+                body: request_value,
+            },
+            &LineResponseLog {
+                headers: &response_headers,
+                body: &response_value,
+                status_code,
+            },
+        );
+    }
+
+    let Ok(json) = json_result else {
         return Err(Box::new(Error::OtherText(text, status_code, line_header)));
     };
     // コンフリクトしてもメッセージ送信はフォーマットが崩れないので成功とする
@@ -141,6 +257,7 @@ pub(crate) async fn execute_api<T, F>(
     options: &LineOptions,
     is_retry: F,
     retry_key: Option<String>,
+    request_value: serde_json::Value,
 ) -> Result<(T, LineResponseHeader), Box<Error>>
 where
     T: DeserializeOwned,
@@ -151,18 +268,18 @@ where
     let mut res = Err(Error::Invalid("fail loop".to_string()));
     let try_count = options.get_try_count();
     let retry_duration: Duration = options.get_retry_duration();
-    let mut rng = StdRng::from_os_rng();
+    let mut rng: StdRng = rand::make_rng();
     for i in 0..try_count {
         // リクエスト準備
         let mut builder = f();
         // リトライ処理はtry_countが1以上の場合のみ
-        if let Some(retry_key) = &retry_key {
-            if try_count > 1 {
-                // リトライ回数がある場合はリトライキーをヘッダーに追加
-                builder = builder.header(HEADER_RETRY_KEY, retry_key);
-            }
+        if let Some(retry_key) = &retry_key
+            && try_count > 1
+        {
+            // リトライ回数がある場合はリトライキーをヘッダーに追加
+            builder = builder.header(HEADER_RETRY_KEY, retry_key);
         }
-        match execute_api_raw(builder, retry_key.is_some()).await {
+        match execute_api_raw(builder, retry_key.is_some(), options, &request_value).await {
             Ok((json, line_header, status_code)) => {
                 res = match serde_json::from_value(json.clone()) {
                     // フォーマットがあっている

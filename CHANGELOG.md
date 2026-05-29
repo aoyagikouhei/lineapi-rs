@@ -1,5 +1,11 @@
 ## Changes
 
+### v0.9.0 (2026/05/29)
+#### New Features
+- add on_request / on_response callbacks to LineOptions for request/response logging
+#### Modify
+- update rand 0.10
+
 ### v0.8.0 (2026/01/22)
 #### Breaking Change
 - update reqwest 0.13
