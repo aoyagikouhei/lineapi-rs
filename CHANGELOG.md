@@ -2,15 +2,23 @@
 
 ### v0.9.0 (2026/05/29)
 #### Breaking Change
-- add fields to `LineOptions` and mark it `#[non_exhaustive]` (construct via `..Default::default()` or the builder methods instead of an exhaustive struct literal)
+- add fields to `LineOptions` and mark it `#[non_exhaustive]`. From outside the crate it can no longer be built with a struct literal (including `..Default::default()`); use `LineOptions::default()` together with the `with_*` builder methods instead
 #### New Features
 - add on_request / on_response callbacks to LineOptions for request/response logging
-  - `LineRequestLog` / `LineResponseLog` expose their fields via accessor methods (`headers()`, `body()`, `status_code()`)
+  - `LineRequestLog` / `LineResponseLog` expose their fields via accessor methods (`headers()`, `body()`, `status_code()`, `body_was_json()`)
   - `LineRequestLog::headers()` returns `Option<&HeaderMap>` so a header-capture failure is distinguishable from empty headers
   - `LineRequestLog::headers_redacted()` returns a header copy with the `Authorization` value masked
+  - `LineRequestLog::body_redacted()` / `LineResponseLog::body_redacted()` mask known secret body keys (`client_secret`, `access_token`, `refresh_token`, `code`, `code_verifier`, `id_token`, `userAccessToken`; see `REDACTED_BODY_KEYS`)
+  - `LineResponseLog::body_was_json()` distinguishes a parsed-JSON body from a raw-text body wrapped in `Value::String`
+  - request-body serialization failures are surfaced as `{"_serialize_error": "..."}` rather than collapsing to `Value::Null` (which means "no body")
+  - response body-read failures now propagate as `Error::Reqwest` instead of being swallowed into an empty body
+  - add `with_prefix_url` / `with_timeout_duration` / `with_try_count` / `with_retry_duration` builders
   - note: callbacks are `#[serde(skip)]`, so serializing then deserializing a `LineOptions` drops them; set them via `with_on_request` / `with_on_response`
 #### Modify
 - update rand 0.10
+- update sha2 0.11
+- update strum 0.28
+- update futures-util 0.3.32
 
 ### v0.8.0 (2026/01/22)
 #### Breaking Change

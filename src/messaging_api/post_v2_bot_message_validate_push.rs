@@ -37,7 +37,7 @@ pub async fn execute(
         options,
         is_standard_retry,
         None,
-        || serde_json::to_value(&body).unwrap_or_default(),
+        || crate::serialize_log_body(&body),
     )
     .await
 }

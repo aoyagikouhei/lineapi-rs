@@ -106,7 +106,7 @@ pub async fn execute(
         options,
         is_standard_retry,
         None,
-        || serde_json::to_value(query_params).unwrap_or_default(),
+        || crate::serialize_log_body(query_params),
     )
     .await
 }

@@ -489,4 +489,121 @@ mod tests {
         // on_request 未設定でもリクエストヘッダーは捕捉される
         assert_eq!(*captured.lock().unwrap(), vec![true]);
     }
+
+    // headers_redacted: Authorization は *** にマスクされ、非秘匿ヘッダーは保持される
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_headers_redacted -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_headers_redacted() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mock = make_mock(&mut server, Some(MockParamsBuilder::default())).await;
+
+        // (authorization 値, content-type が存在するか)
+        let captured = Arc::new(Mutex::new(Vec::<(Option<String>, bool)>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_request(move |log| {
+            let redacted = log.headers_redacted().expect("headers captured");
+            let auth = redacted
+                .get("authorization")
+                .map(|v| v.to_str().unwrap().to_string());
+            let has_content_type = redacted.contains_key("content-type");
+            c.lock().unwrap().push((auth, has_content_type));
+        });
+
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _res = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+
+        let captured = captured.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        // Authorization はマスクされ、元のトークンは含まない
+        assert_eq!(captured[0].0, Some("***".to_string()));
+        // content-type(非秘匿)は保持される
+        assert!(captured[0].1, "non-secret header must be preserved");
+    }
+
+    // body_was_json: JSON レスポンスは true、非JSON は false
+    // cargo test --all-features test_make_mock_post_v2_bot_message_push_body_was_json -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_v2_bot_message_push_body_was_json() {
+        use std::sync::{Arc, Mutex};
+
+        // --- JSON レスポンス: true ---
+        let mut server = Server::new_async().await;
+        let mock = make_mock(&mut server, Some(MockParamsBuilder::default())).await;
+        let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_response(move |_req, res| {
+            c.lock().unwrap().push(res.body_was_json());
+        });
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _ = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await
+        .unwrap();
+        mock.assert_async().await;
+        assert_eq!(*captured.lock().unwrap(), vec![true]);
+
+        // --- 非JSON レスポンス: false ---
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("POST", "/v2/bot/message/push")
+            .with_status(502)
+            .with_header("content-type", "text/plain")
+            .with_body("Bad Gateway")
+            .create_async()
+            .await;
+        let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_response(move |_req, res| {
+            c.lock().unwrap().push(res.body_was_json());
+        });
+        let request_body = post_v2_bot_message_push::RequestBody::new(
+            "U123456789",
+            vec![json!({"type": "text", "text": "Hello!"})],
+        )
+        .unwrap();
+        let _ = post_v2_bot_message_push::execute(
+            request_body,
+            "test_channel_access_token",
+            &options,
+            None,
+        )
+        .await;
+        mock.assert_async().await;
+        assert_eq!(*captured.lock().unwrap(), vec![false]);
+    }
 }

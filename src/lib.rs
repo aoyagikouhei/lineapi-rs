@@ -34,13 +34,22 @@ const REDACTED: &str = "***";
 ///
 /// # 秘匿情報の扱い
 ///
-/// メッセージング系エンドポイントでは [`headers`](Self::headers) に
-/// `Authorization: Bearer <token>` が**含まれる場合がある**。一方、OAuth ログイン系
-/// (token / revoke / verify)は `Authorization` ヘッダーを付けず、`client_secret` /
-/// `refresh_token` / `access_token` などの秘匿情報を**ボディやクエリ**側に持つ。
+/// 秘匿情報は**ヘッダー側**と**ボディ側**の双方に入り得る。
 ///
-/// ログ出力時は [`headers_redacted`](Self::headers_redacted) で `Authorization`
-/// ヘッダーをマスクできるが、ボディ/クエリ側の秘匿情報は呼び出し側でマスクすること。
+/// - ヘッダー: メッセージング系および一部のログイン系
+///   (例: `post_user_v1_deauthorize`)は [`headers`](Self::headers) に
+///   `Authorization: Bearer <token>` を含む。
+/// - ボディ: OAuth ログイン系(token / revoke / POST verify / deauthorize)は
+///   `client_secret` / `refresh_token` / `access_token` / `code` などの秘匿情報を
+///   [`body`](Self::body) 側に持つ(`post_user_v1_deauthorize` はヘッダーとボディの
+///   両方に秘匿情報を持つ)。
+///
+/// ログ出力時は [`headers_redacted`](Self::headers_redacted) でヘッダーを、
+/// [`body_redacted`](Self::body_redacted) でボディの既知の秘匿キーをマスクできる。
+///
+/// なお、クエリ文字列に秘匿情報を載せるエンドポイント(GET verify の `access_token`)は
+/// コールバックへ渡されない([`headers`](Self::headers) にも [`body`](Self::body) にも
+/// 現れない)ため、呼び出し側でマスクする対象は存在しない。
 #[derive(Debug, Clone)]
 pub struct LineRequestLog<'a> {
     headers: Option<&'a HeaderMap>,
@@ -51,7 +60,12 @@ impl<'a> LineRequestLog<'a> {
     /// リクエストヘッダー。
     ///
     /// リクエストの複製(`try_clone`)や再構築に失敗した場合は `None`。これにより
-    /// 「ヘッダーが空」と「捕捉に失敗」を区別できる。
+    /// 「ヘッダーが空」と「捕捉に失敗」を区別できる。なお現行の全エンドポイントは
+    /// in-memory なボディ(`.json` / `.form` / `.query`)を使うため `try_clone` は
+    /// 失敗せず、通常 `None` にはならない。
+    ///
+    /// 捕捉したヘッダーは `RequestBuilder` を再構築した時点のもので、送信時に reqwest が
+    /// 付与する `content-length` / `host` などは含まれない。
     pub fn headers(&self) -> Option<&'a HeaderMap> {
         self.headers
     }
@@ -61,16 +75,27 @@ impl<'a> LineRequestLog<'a> {
     /// フォームエンコード系エンドポイント(OAuth の token / revoke / POST verify)では
     /// 実際の送信形式は `application/x-www-form-urlencoded` であり、この JSON 表現とは
     /// 異なる。GET 系(GET verify を含む)はボディを持たないため `Value::Null` になる。
+    /// シリアライズに失敗した場合は `{"_serialize_error": "<理由>"}` となり、`Value::Null`
+    /// (=ボディ無し)とは区別できる。
     pub fn body(&self) -> &'a serde_json::Value {
         self.body
     }
 
     /// `Authorization` ヘッダー値を `***` に置換したヘッダーの複製を返す。
     ///
-    /// ヘッダーのみをマスクする。OAuth 系のようにボディ/クエリへ秘匿情報が入る
-    /// 場合は [`body`](Self::body) を別途マスクすること。捕捉失敗時は `None`。
+    /// ヘッダーのみをマスクする。OAuth 系のようにボディへ秘匿情報が入る場合は
+    /// [`body_redacted`](Self::body_redacted) を使うこと。捕捉失敗時は `None`。
     pub fn headers_redacted(&self) -> Option<HeaderMap> {
         self.headers.map(redact_headers)
+    }
+
+    /// ボディ([`body`](Self::body))の既知の秘匿キーを `***` に置換した複製を返す。
+    ///
+    /// マスク対象キーは [`REDACTED_BODY_KEYS`] を参照(`client_secret` /
+    /// `access_token` / `refresh_token` / `code` / `code_verifier` / `id_token` /
+    /// `userAccessToken`)。ネストしたオブジェクト/配列も再帰的に走査する。
+    pub fn body_redacted(&self) -> serde_json::Value {
+        redact_body(self.body)
     }
 }
 
@@ -80,6 +105,7 @@ pub struct LineResponseLog<'a> {
     headers: &'a HeaderMap,
     body: &'a serde_json::Value,
     status_code: StatusCode,
+    body_was_json: bool,
 }
 
 impl<'a> LineResponseLog<'a> {
@@ -91,7 +117,9 @@ impl<'a> LineResponseLog<'a> {
     /// レスポンスボディ。
     ///
     /// JSON としてパースできた場合はその値、できなかった場合は生テキストを
-    /// `Value::String` で包んだ値が渡される。
+    /// `Value::String` で包んだ値が渡される。両者を区別したい場合は
+    /// [`body_was_json`](Self::body_was_json) を参照すること(JSON 文字列ボディも
+    /// `Value::String` になるため、値の形だけでは区別できない)。
     pub fn body(&self) -> &'a serde_json::Value {
         self.body
     }
@@ -100,7 +128,36 @@ impl<'a> LineResponseLog<'a> {
     pub fn status_code(&self) -> StatusCode {
         self.status_code
     }
+
+    /// レスポンスボディが JSON としてパースできたかどうか。
+    ///
+    /// `false` の場合、[`body`](Self::body) は生テキストを `Value::String` で包んだ値。
+    pub fn body_was_json(&self) -> bool {
+        self.body_was_json
+    }
+
+    /// ボディ([`body`](Self::body))の既知の秘匿キーを `***` に置換した複製を返す。
+    ///
+    /// マスク対象キーは [`REDACTED_BODY_KEYS`] を参照。token レスポンスの
+    /// `access_token` / `refresh_token` / `id_token` などをマスクする。
+    pub fn body_redacted(&self) -> serde_json::Value {
+        redact_body(self.body)
+    }
 }
+
+/// [`body_redacted`](LineRequestLog::body_redacted) /
+/// [`body_redacted`](LineResponseLog::body_redacted) でマスクされるボディのキー。
+///
+/// マッチは大文字小文字を無視して行う。
+pub const REDACTED_BODY_KEYS: &[&str] = &[
+    "access_token",
+    "refresh_token",
+    "client_secret",
+    "code",
+    "code_verifier",
+    "id_token",
+    "useraccesstoken",
+];
 
 /// `Authorization` ヘッダー値を `***` に置換したヘッダーの複製を返す。
 fn redact_headers(headers: &HeaderMap) -> HeaderMap {
@@ -109,6 +166,37 @@ fn redact_headers(headers: &HeaderMap) -> HeaderMap {
         redacted.insert(AUTHORIZATION, HeaderValue::from_static(REDACTED));
     }
     redacted
+}
+
+/// ボディ JSON を再帰的に走査し、[`REDACTED_BODY_KEYS`] に該当するキーの値を `***` に
+/// 置換した複製を返す(キー比較は大文字小文字を無視)。
+fn redact_body(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.iter()
+                .map(|(key, val)| {
+                    if REDACTED_BODY_KEYS.contains(&key.to_ascii_lowercase().as_str()) {
+                        (key.clone(), serde_json::Value::String(REDACTED.to_string()))
+                    } else {
+                        (key.clone(), redact_body(val))
+                    }
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(redact_body).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+/// ログ用にリクエストボディを JSON 化する。
+///
+/// シリアライズに失敗した場合は `Value::Null`(=ボディ無し)と区別できるよう
+/// `{"_serialize_error": "<理由>"}` を返す。
+pub(crate) fn serialize_log_body<T: Serialize>(value: &T) -> serde_json::Value {
+    serde_json::to_value(value)
+        .unwrap_or_else(|err| serde_json::json!({ "_serialize_error": err.to_string() }))
 }
 
 /// リクエスト送信直前に呼ばれるコールバック。
@@ -167,11 +255,42 @@ impl LineOptions {
         self.timeout_duration.unwrap_or(Duration::from_secs(0))
     }
 
+    /// API のベース URL を設定する。
+    ///
+    /// `LineOptions` は `#[non_exhaustive]` のため、外部クレートからは構造体リテラルでは
+    /// 構築できない。`LineOptions::default()` と各 `with_*` メソッドを併用すること。
+    pub fn with_prefix_url(mut self, prefix_url: impl Into<String>) -> Self {
+        self.prefix_url = Some(prefix_url.into());
+        self
+    }
+
+    /// リクエストのタイムアウトを設定する。
+    pub fn with_timeout_duration(mut self, timeout_duration: Duration) -> Self {
+        self.timeout_duration = Some(timeout_duration);
+        self
+    }
+
+    /// 試行回数(リトライ含む)を設定する。
+    pub fn with_try_count(mut self, try_count: u8) -> Self {
+        self.try_count = Some(try_count);
+        self
+    }
+
+    /// リトライ間隔の基準値を設定する。
+    pub fn with_retry_duration(mut self, retry_duration: Duration) -> Self {
+        self.retry_duration = Some(retry_duration);
+        self
+    }
+
     /// リクエスト送信直前に呼ばれるコールバックを設定する。
     ///
     /// 渡される [`LineRequestLog`] には秘匿情報(`Authorization` ヘッダーや OAuth 系の
-    /// ボディ/クエリ)が含まれ得る。ログ出力時のマスクについては
-    /// [`LineRequestLog`] のドキュメントを参照。
+    /// ボディ)が含まれ得る。ログ出力時のマスクについては [`LineRequestLog`] の
+    /// ドキュメントを参照。
+    ///
+    /// コールバックは API 呼び出しのリクエスト経路で同期的に実行される。内部で panic
+    /// すると API 呼び出し自体が失敗し、コールバックが共有するロック等を poison し得る
+    /// ため、panic させないこと。
     pub fn with_on_request(mut self, f: impl Fn(&LineRequestLog) + Send + Sync + 'static) -> Self {
         self.on_request = Some(Arc::new(f));
         self
@@ -179,9 +298,13 @@ impl LineOptions {
 
     /// レスポンス受信後に呼ばれるコールバックを設定する。
     ///
-    /// 渡される [`LineRequestLog`] には秘匿情報(`Authorization` ヘッダーや OAuth 系の
-    /// ボディ/クエリ)が含まれ得る。ログ出力時のマスクについては
-    /// [`LineRequestLog`] のドキュメントを参照。
+    /// 渡される [`LineRequestLog`] / [`LineResponseLog`] には秘匿情報(`Authorization`
+    /// ヘッダーや OAuth 系のボディ/レスポンス)が含まれ得る。ログ出力時のマスクについては
+    /// [`LineRequestLog`] / [`LineResponseLog`] のドキュメントを参照。
+    ///
+    /// コールバックは API 呼び出しのレスポンス経路で同期的に実行される。内部で panic
+    /// すると API 呼び出し自体が失敗し、コールバックが共有するロック等を poison し得る
+    /// ため、panic させないこと。
     pub fn with_on_response(
         mut self,
         f: impl Fn(&LineRequestLog, &LineResponseLog) + Send + Sync + 'static,
@@ -287,7 +410,11 @@ pub(crate) async fn execute_api_raw(
     } else {
         HeaderMap::new()
     };
-    let text = response.text().await.unwrap_or_default();
+    // ボディ読取失敗は握り潰さず伝播する(読めなかったボディは観測経路にも乗せない)。
+    let text = response
+        .text()
+        .await
+        .map_err(|err| Box::new(Error::Reqwest(err)))?;
     let json_result = serde_json::from_str::<serde_json::Value>(&text);
 
     if let Some(cb) = &options.on_response {
@@ -306,6 +433,7 @@ pub(crate) async fn execute_api_raw(
                 headers: &response_headers,
                 body: &response_value,
                 status_code,
+                body_was_json: json_result.is_ok(),
             },
         );
     }
@@ -403,4 +531,83 @@ where
         }
     }
     res.map_err(Box::new)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serialize_log_body_success() {
+        let value = serialize_log_body(&serde_json::json!({"a": 1}));
+        assert_eq!(value, serde_json::json!({"a": 1}));
+    }
+
+    #[test]
+    fn test_serialize_log_body_failure_sentinel() {
+        use std::collections::HashMap;
+        // 非文字列キーの map は JSON 化に失敗するため sentinel が返る
+        let mut map: HashMap<Vec<i32>, i32> = HashMap::new();
+        map.insert(vec![1, 2], 3);
+        let value = serialize_log_body(&map);
+        assert!(
+            value.get("_serialize_error").is_some(),
+            "expected serialize error sentinel, got: {value}"
+        );
+        // ボディ無し(Null)とは区別できる
+        assert_ne!(value, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_redact_body_masks_known_keys_recursively() {
+        let input = serde_json::json!({
+            "client_secret": "secret",
+            "grant_type": "authorization_code",
+            "nested": { "refresh_token": "rt", "keep": "v" },
+            "list": [ { "access_token": "at" } ],
+        });
+        let out = redact_body(&input);
+        assert_eq!(out["client_secret"], "***");
+        assert_eq!(out["grant_type"], "authorization_code");
+        assert_eq!(out["nested"]["refresh_token"], "***");
+        assert_eq!(out["nested"]["keep"], "v");
+        assert_eq!(out["list"][0]["access_token"], "***");
+    }
+
+    #[test]
+    fn test_redact_body_case_insensitive() {
+        // deauthorize の userAccessToken(camelCase)もマスクされる
+        let input = serde_json::json!({ "userAccessToken": "x", "ID_TOKEN": "y" });
+        let out = redact_body(&input);
+        assert_eq!(out["userAccessToken"], "***");
+        assert_eq!(out["ID_TOKEN"], "***");
+    }
+
+    // コールバック未設定なら request_value_fn は呼ばれない(無駄なシリアライズを避ける)。
+    #[cfg(feature = "mock")]
+    #[tokio::test]
+    async fn test_no_callback_skips_request_value_fn() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/test")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+        let url = format!("{}/test", server.url());
+        let options = LineOptions::default();
+
+        // コールバック未設定なので、呼ばれたら panic するクロージャでも問題なく完了する
+        let result: Result<(serde_json::Value, LineResponseHeader), _> = execute_api(
+            || reqwest::Client::new().get(&url),
+            &options,
+            is_standard_retry,
+            None,
+            || panic!("request_value_fn must not be called when no callback is set"),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        mock.assert_async().await;
+    }
 }

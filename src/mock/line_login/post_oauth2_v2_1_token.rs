@@ -244,4 +244,78 @@ mod tests {
 
         mock.assert_async().await;
     }
+
+    // OAuth ボディ/レスポンスの秘匿情報マスク。
+    // body() は秘匿情報を素のまま含む(契約の明文化)一方、body_redacted() ではマスクされる。
+    // cargo test --all-features test_make_mock_post_oauth2_v2_1_token_body_redacted -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_oauth2_v2_1_token_body_redacted() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mut builder = MockParamsBuilder::default();
+        builder.grant_type("authorization_code".to_string());
+        builder.code("auth_code_123".to_string());
+        builder.redirect_uri("https://myapp.com/callback".to_string());
+        // リクエストの client_secret とモックのマッチャーを一致させる
+        builder.client_secret("super_secret".to_string());
+        let mock = make_mock(&mut server, Some(builder)).await;
+
+        // (req body 素, req body マスク後)
+        let req = Arc::new(Mutex::new(
+            Vec::<(serde_json::Value, serde_json::Value)>::new(),
+        ));
+        // res body マスク後
+        let res_redacted = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let rq = req.clone();
+        let rs = res_redacted.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_request(move |log| {
+            rq.lock()
+                .unwrap()
+                .push((log.body().clone(), log.body_redacted()));
+        })
+        .with_on_response(move |_req, res| {
+            rs.lock().unwrap().push(res.body_redacted());
+        });
+
+        let request_body = post_oauth2_v2_1_token::RequestBody::AuthorizationCode {
+            code: "auth_code_123".to_string(),
+            redirect_uri: "https://myapp.com/callback".to_string(),
+            client_id: "1234567890".to_string(),
+            client_secret: "super_secret".to_string(),
+            code_verifier: Some("verifier_value".to_string()),
+        };
+
+        let _res = post_oauth2_v2_1_token::execute(&request_body, &options)
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+
+        let req = req.lock().unwrap();
+        assert_eq!(req.len(), 1);
+        let (raw, redacted) = &req[0];
+        // 素の body は秘匿情報をそのまま含む(契約の明文化)
+        assert_eq!(raw["client_secret"], "super_secret");
+        assert_eq!(raw["code"], "auth_code_123");
+        assert_eq!(raw["code_verifier"], "verifier_value");
+        // body_redacted では秘匿キーがマスクされる
+        assert_eq!(redacted["client_secret"], "***");
+        assert_eq!(redacted["code"], "***");
+        assert_eq!(redacted["code_verifier"], "***");
+        // 非秘匿キーは保持
+        assert_eq!(redacted["client_id"], "1234567890");
+        assert_eq!(redacted["redirect_uri"], "https://myapp.com/callback");
+
+        // レスポンスの access_token / refresh_token もマスクされる
+        let res_redacted = res_redacted.lock().unwrap();
+        assert_eq!(res_redacted.len(), 1);
+        assert_eq!(res_redacted[0]["access_token"], "***");
+        assert_eq!(res_redacted[0]["refresh_token"], "***");
+        assert_eq!(res_redacted[0]["token_type"], "Bearer");
+    }
 }
