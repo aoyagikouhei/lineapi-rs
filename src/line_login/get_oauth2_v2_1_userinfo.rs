@@ -47,7 +47,7 @@ pub async fn execute_get(
         options,
         is_standard_retry,
         None,
-        serde_json::Value::Null,
+        || serde_json::Value::Null,
     )
     .await
 }
@@ -61,7 +61,7 @@ pub async fn execute_post(
         options,
         is_standard_retry,
         None,
-        serde_json::Value::Null,
+        || serde_json::Value::Null,
     )
     .await
 }

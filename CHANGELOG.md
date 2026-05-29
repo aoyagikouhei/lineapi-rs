@@ -1,6 +1,8 @@
 ## Changes
 
 ### v0.9.0 (2026/05/29)
+#### Breaking Change
+- add fields to `LineOptions` and mark it `#[non_exhaustive]` (construct via `..Default::default()` or the builder methods instead of an exhaustive struct literal)
 #### New Features
 - add on_request / on_response callbacks to LineOptions for request/response logging
 #### Modify

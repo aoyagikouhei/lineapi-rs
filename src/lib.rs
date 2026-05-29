@@ -34,6 +34,11 @@ pub struct LineResponseHeader {
 #[derive(Debug, Clone)]
 pub struct LineRequestLog<'a> {
     pub headers: &'a HeaderMap,
+    /// リクエスト内容を JSON 化した論理表現。
+    ///
+    /// フォームエンコード系エンドポイント(OAuth の token / revoke / verify)では
+    /// 実際の送信形式は `application/x-www-form-urlencoded` であり、この `body`
+    /// (JSON 表現)とは異なる点に注意。
     pub body: &'a serde_json::Value,
 }
 
@@ -52,6 +57,7 @@ pub type OnRequest = Arc<dyn Fn(&LineRequestLog) + Send + Sync>;
 pub type OnResponse = Arc<dyn Fn(&LineRequestLog, &LineResponseLog) + Send + Sync>;
 
 #[derive(Default, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct LineOptions {
     pub prefix_url: Option<String>,
     pub timeout_duration: Option<Duration>,
@@ -257,7 +263,7 @@ pub(crate) async fn execute_api<T, F>(
     options: &LineOptions,
     is_retry: F,
     retry_key: Option<String>,
-    request_value: serde_json::Value,
+    request_value_fn: impl FnOnce() -> serde_json::Value,
 ) -> Result<(T, LineResponseHeader), Box<Error>>
 where
     T: DeserializeOwned,
@@ -268,6 +274,12 @@ where
     let mut res = Err(Error::Invalid("fail loop".to_string()));
     let try_count = options.get_try_count();
     let retry_duration: Duration = options.get_retry_duration();
+    // コールバック設定時のみ request body をシリアライズする(未設定時の無駄を避ける)。
+    let request_value = if options.on_request.is_some() || options.on_response.is_some() {
+        request_value_fn()
+    } else {
+        serde_json::Value::Null
+    };
     let mut rng: StdRng = rand::make_rng();
     for i in 0..try_count {
         // リクエスト準備

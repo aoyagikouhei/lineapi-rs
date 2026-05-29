@@ -58,7 +58,7 @@ pub async fn execute(
         options,
         is_standard_retry,
         None,
-        serde_json::Value::Null,
+        || serde_json::Value::Null,
     )
     .await
 }
