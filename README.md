@@ -38,6 +38,29 @@ LINE API library supporting both LINE Messaging API and LINE Login API.
 - Mock support for testing
 - Stream support for large data
 - PKCE (Proof Key for Code Exchange) support for OAuth
+- Request/response logging via `on_request` / `on_response` callbacks (v0.9.0), with built-in secret redaction (`headers_redacted` / `body_redacted`, and a redacting `Debug`)
+
+## Logging (v0.9.0)
+
+Attach `on_request` / `on_response` callbacks to `LineOptions` to observe every HTTP request and response. The callbacks receive **un-redacted** logs (the `Authorization` header and OAuth body secrets such as `client_secret` / `access_token` are present in the clear), so always mask before logging — use the `*_redacted()` helpers, or the `Debug` impl which redacts automatically.
+
+```rust
+use lineapi::LineOptions;
+
+let options = LineOptions::default()
+    .with_on_request(|log| {
+        // `log.body()` / `log.headers()` are UN-redacted — mask before logging.
+        println!("[LINE request] {}", log.body_redacted());
+    })
+    .with_on_response(|_req, res| {
+        println!("[LINE response] status={} body={}", res.status_code(), res.body_redacted());
+    });
+```
+
+Notes:
+- Callbacks fire once **per retry attempt** (up to `try_count`); for streaming endpoints (`make_stream` / `execute_stream`) they additionally fire once **per page**.
+- `body_redacted()` masks an allowlist of known secret keys only (see `REDACTED_BODY_KEYS`); unknown keys are not masked.
+- A panic inside a callback is caught and logged via `tracing::error!`; the API call keeps running.
 
 ## Examples
 
@@ -50,6 +73,7 @@ A complete web application demonstrating LINE Login integration with PKCE (Proof
 - Authorization code exchange for access token
 - User profile retrieval using access token
 - Secure cookie-based session management
+- Redacted request/response logging via `on_request` / `on_response` callbacks
 
 **Usage:**
 ```bash

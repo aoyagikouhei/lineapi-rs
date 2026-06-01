@@ -77,7 +77,7 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(res.0.friend_flag, true);
+        assert!(res.0.friend_flag);
 
         mock.assert_async().await;
     }
@@ -111,5 +111,34 @@ mod tests {
         }
 
         mock.assert_async().await;
+    }
+
+    // GET エンドポイントの本文契約: on_request の body() は Value::Null
+    // cargo test --all-features test_make_mock_get_friendship_v1_status_callbacks_null_body -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_get_friendship_v1_status_callbacks_null_body() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mock = make_mock(&mut server, Some(MockParamsBuilder::default())).await;
+
+        let captured = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let c = captured.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_request(move |log| {
+            c.lock().unwrap().push(log.body().clone());
+        });
+
+        let _res = get_friendship_v1_status::execute("test_access_token", &options)
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+
+        // GET はボディを持たないため Null
+        assert_eq!(*captured.lock().unwrap(), vec![serde_json::Value::Null]);
     }
 }

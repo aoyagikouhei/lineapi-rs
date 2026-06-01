@@ -87,6 +87,7 @@ pub async fn execute(
         options,
         is_standard_retry,
         retry_key,
+        || crate::serialize_log_body(&body),
     )
     .await
 }
