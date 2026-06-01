@@ -51,10 +51,22 @@ const REDACTED: &str = "***";
 /// なお、クエリ文字列に秘匿情報を載せるエンドポイント(GET verify の `access_token`)は
 /// コールバックへ渡されない([`headers`](Self::headers) にも [`body`](Self::body) にも
 /// 現れない)ため、呼び出し側でマスクする対象は存在しない。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LineRequestLog<'a> {
     headers: Option<&'a HeaderMap>,
     body: &'a serde_json::Value,
+}
+
+// Debug を導出せず手実装するのは意図的。導出すると `{:?}` / `tracing::*(?log)` で
+// `Authorization` トークンや OAuth ボディの秘匿情報が生のまま出力されてしまう。
+// マスク済みの値(`headers_redacted` / `body_redacted`)のみを表示する。
+impl std::fmt::Debug for LineRequestLog<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineRequestLog")
+            .field("headers", &self.headers_redacted())
+            .field("body", &self.body_redacted())
+            .finish()
+    }
 }
 
 impl<'a> LineRequestLog<'a> {
@@ -98,6 +110,13 @@ impl<'a> LineRequestLog<'a> {
     /// マスク対象キーは [`REDACTED_BODY_KEYS`] を参照(`client_secret` /
     /// `access_token` / `refresh_token` / `code` / `code_verifier` / `id_token` /
     /// `userAccessToken`)。ネストしたオブジェクト/配列も再帰的に走査する。
+    ///
+    /// # 限界(許可リスト方式)
+    ///
+    /// マスクは [`REDACTED_BODY_KEYS`] の**既知キー完全一致**のみで行う。リストに無いキー、
+    /// 例えば LINE が将来追加するフィールドや、レスポンス型の `#[serde(flatten)] extra` 経由で
+    /// 流れ込む未知の秘匿フィールドは**マスクされず素通りする**。本メソッドの戻り値を「すべての
+    /// 秘匿情報が除去済み」とみなさないこと。
     pub fn body_redacted(&self) -> serde_json::Value {
         redact_body(self.body)
     }
@@ -127,11 +146,25 @@ pub enum ResponseBody {
 /// レスポンスヘッダーは秘匿情報を含まない前提のため、[`LineRequestLog`] と異なり
 /// `headers_redacted` 相当のヘルパーは提供しない(本クレートが観測するレスポンスヘッダーに
 /// `Authorization` のような秘匿ヘッダーは無い)。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LineResponseLog<'a> {
     headers: &'a HeaderMap,
     body: ResponseBody,
     status_code: StatusCode,
+}
+
+// Debug を導出せず手実装するのは意図的。token レスポンスの `access_token` /
+// `refresh_token` / `id_token` などボディに秘匿情報が入り得るため、`{:?}` 出力では
+// マスク済みの値(`body_redacted`)を表示する。ヘッダーは秘匿情報を含まない前提
+// (本クレートが観測するレスポンスヘッダーに `Authorization` 等は無い)のためそのまま。
+impl std::fmt::Debug for LineResponseLog<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineResponseLog")
+            .field("headers", &self.headers)
+            .field("status_code", &self.status_code)
+            .field("body", &self.body_redacted())
+            .finish()
+    }
 }
 
 impl<'a> LineResponseLog<'a> {
@@ -172,6 +205,13 @@ impl<'a> LineResponseLog<'a> {
     ///
     /// マスク対象キーは [`REDACTED_BODY_KEYS`] を参照。token レスポンスの
     /// `access_token` / `refresh_token` / `id_token` などをマスクする。
+    ///
+    /// # 限界(許可リスト方式)
+    ///
+    /// マスクは [`REDACTED_BODY_KEYS`] の**既知キー完全一致**のみで行う。リストに無いキー、
+    /// 例えば LINE が将来追加するフィールドや、レスポンス型の `#[serde(flatten)] extra` 経由で
+    /// 流れ込む未知の秘匿フィールドは**マスクされず素通りする**。本メソッドの戻り値を「すべての
+    /// 秘匿情報が除去済み」とみなさないこと。
     pub fn body_redacted(&self) -> serde_json::Value {
         redact_body(&self.as_value())
     }

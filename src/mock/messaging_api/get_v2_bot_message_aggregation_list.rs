@@ -197,4 +197,132 @@ mod tests {
 
         mock.assert_async().await;
     }
+
+    // クエリパラメータ系 GET は serialize_log_body(query_params) をログボディに渡す固有契約。
+    // on_request コールバックでクエリパラメータが JSON オブジェクトとして body() に載ることを固定する。
+    // cargo test --all-features test_make_mock_get_v2_bot_message_aggregation_list_callbacks -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_get_v2_bot_message_aggregation_list_callbacks() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mut builder = MockParamsBuilder::default();
+        builder.limit(Some(50u8));
+        builder.custom_aggregation_units(vec!["unit1".to_string()]);
+        let mock = make_mock(&mut server, Some(builder)).await;
+
+        let captured_req = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let creq = captured_req.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_request(move |log| {
+            creq.lock().unwrap().push(log.body().clone());
+        });
+
+        let query_params = get_v2_bot_message_aggregation_list::QueryParams {
+            limit: Some(50),
+            start: None,
+        };
+
+        let _res = get_v2_bot_message_aggregation_list::execute(
+            &query_params,
+            "test_channel_access_token",
+            &options,
+        )
+        .await
+        .unwrap();
+
+        mock.assert_async().await;
+
+        let reqs = captured_req.lock().unwrap();
+        assert_eq!(reqs.len(), 1);
+        // クエリパラメータが JSON オブジェクトとしてログボディに載る(Value::Null ではない)
+        assert_ne!(reqs[0], serde_json::Value::Null);
+        assert!(
+            reqs[0].is_object(),
+            "query body must be a JSON object, got: {}",
+            reqs[0]
+        );
+        assert_eq!(reqs[0]["limit"], 50);
+        // None のクエリ(start)は serialize_log_body でスキップされ、キー自体が無い
+        assert!(reqs[0].get("start").is_none());
+    }
+
+    // make_stream はページごとに execute を呼ぶため、on_request / on_response コールバックは
+    // ページ数ぶん発火する(リトライ単位の発火とは別軸)。2 ページのモックでこの契約を固定する。
+    // cargo test --all-features test_make_mock_get_v2_bot_message_aggregation_list_stream_callbacks_per_page -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_get_v2_bot_message_aggregation_list_stream_callbacks_per_page() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+
+        // 1 ページ目: limit=100(start 無し)。next を返して 2 ページ目へ進ませる。
+        // Matcher::Exact でクエリ文字列を厳密一致させ、2 ページ目のモックと取り違えないようにする。
+        let page1 = server
+            .mock("GET", "/v2/bot/message/aggregation/list")
+            .match_header("authorization", "Bearer test_channel_access_token")
+            .match_query(Matcher::Exact("limit=100".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({"customAggregationUnits": ["unit1"], "next": "page2_token"}).to_string(),
+            )
+            .expect(1)
+            .create_async()
+            .await;
+
+        // 2 ページ目: limit=100&start=page2_token。next 無しでストリームを終了させる。
+        let page2 = server
+            .mock("GET", "/v2/bot/message/aggregation/list")
+            .match_header("authorization", "Bearer test_channel_access_token")
+            .match_query(Matcher::Exact("limit=100&start=page2_token".to_string()))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(json!({"customAggregationUnits": ["unit2"]}).to_string())
+            .expect(1)
+            .create_async()
+            .await;
+
+        let req_count = Arc::new(Mutex::new(0usize));
+        let res_count = Arc::new(Mutex::new(0usize));
+        let rq = req_count.clone();
+        let rs = res_count.clone();
+        let options = LineOptions {
+            prefix_url: Some(server.url()),
+            ..Default::default()
+        }
+        .with_on_request(move |_log| {
+            *rq.lock().unwrap() += 1;
+        })
+        .with_on_response(move |_req, _res| {
+            *rs.lock().unwrap() += 1;
+        });
+
+        let res = get_v2_bot_message_aggregation_list::execute_stream(
+            "test_channel_access_token",
+            &options,
+            100,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(res, vec!["unit1", "unit2"]);
+        page1.assert_async().await;
+        page2.assert_async().await;
+
+        // 2 ページ巡回したので、コールバックはそれぞれちょうど 2 回発火する
+        assert_eq!(
+            *req_count.lock().unwrap(),
+            2,
+            "on_request fires once per page"
+        );
+        assert_eq!(
+            *res_count.lock().unwrap(),
+            2,
+            "on_response fires once per page"
+        );
+    }
 }

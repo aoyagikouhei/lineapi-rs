@@ -72,6 +72,13 @@ pub async fn execute(
     .await
 }
 
+/// 全ページを巡回し、ユニット名を 1 件ずつ流すストリームを返す。
+///
+/// 内部ではページごとに [`execute`] を呼ぶため、`options` に設定した
+/// [`on_request`](LineOptions::with_on_request) /
+/// [`on_response`](LineOptions::with_on_response) コールバックは**ページごと**に発火する
+/// (リトライ時の試行ごとの発火とは別軸であり、両者は掛け合わさる)。論理的な 1 回の
+/// ストリーム消費でもページ数ぶん呼ばれる点に注意。
 pub fn make_stream(
     channel_access_token: &str,
     options: &LineOptions,
