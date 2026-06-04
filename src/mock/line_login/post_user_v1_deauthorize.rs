@@ -77,10 +77,7 @@ mod tests {
         let res = post_user_v1_deauthorize::execute(
             "test_channel_access_token",
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -106,10 +103,7 @@ mod tests {
         let res = post_user_v1_deauthorize::execute(
             "test_channel_access_token",
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

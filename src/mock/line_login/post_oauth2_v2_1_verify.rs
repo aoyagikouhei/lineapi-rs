@@ -141,10 +141,7 @@ mod tests {
 
         let res = post_oauth2_v2_1_verify::execute(
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -183,10 +180,7 @@ mod tests {
 
         let res = post_oauth2_v2_1_verify::execute(
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -219,10 +213,7 @@ mod tests {
 
         let res = post_oauth2_v2_1_verify::execute(
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

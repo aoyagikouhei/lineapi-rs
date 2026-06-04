@@ -84,10 +84,7 @@ mod tests {
 
         let res = get_oauth2_v2_1_userinfo::execute_get(
             "test_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -116,10 +113,7 @@ mod tests {
 
         let res = get_oauth2_v2_1_userinfo::execute_get(
             "test_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

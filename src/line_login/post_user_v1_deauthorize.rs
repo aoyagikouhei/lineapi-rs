@@ -82,11 +82,10 @@ mod tests {
         let channel_access_token = std::env::var("CHANNEL_ACCESS_TOKEN").unwrap();
         let user_access_token = std::env::var("USER_ACCESS_TOKEN").unwrap();
 
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
 
         let (response, header) =
             super::execute_simple(&channel_access_token, &user_access_token, &options)

@@ -131,10 +131,7 @@ mod tests {
         let _res = post_v2_bot_message_push::execute(
             request_body,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
             None,
         )
         .await
@@ -163,10 +160,7 @@ mod tests {
         let res = post_v2_bot_message_push::execute(
             request_body,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
             None,
         )
         .await;

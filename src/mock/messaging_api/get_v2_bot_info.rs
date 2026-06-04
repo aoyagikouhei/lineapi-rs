@@ -101,10 +101,7 @@ mod tests {
 
         let res = get_v2_bot_info::execute(
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -135,10 +132,7 @@ mod tests {
 
         let res = get_v2_bot_info::execute(
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -167,10 +161,7 @@ mod tests {
 
         let res = get_v2_bot_info::execute(
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

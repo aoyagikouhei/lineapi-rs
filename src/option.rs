@@ -265,8 +265,8 @@ pub const REDACTED_BODY_KEYS: &[&str] = &[
 /// [`REDACTED_BODY_KEYS`] を `Vec<String>` 化したデフォルトのマスクキー。
 ///
 /// [`LineRequestLog`] / [`LineResponseLog`] のマスクキーは `&[String]` で統一的に扱う
-/// (設定値も `Vec<String>`)。`LineOptions` でキーが未設定のとき、[`get_redacted_body_keys`]
-/// (LineOptions::get_redacted_body_keys)はこの `'static` な既定値を返す。
+/// (設定値も `Vec<String>`)。`LineOptions` でキーが未設定のとき、
+/// [`get_redacted_body_keys`](LineOptions::get_redacted_body_keys) はこの `'static` な既定値を返す。
 static DEFAULT_REDACTED_BODY_KEYS: LazyLock<Vec<String>> =
     LazyLock::new(|| REDACTED_BODY_KEYS.iter().map(|s| s.to_string()).collect());
 
@@ -460,7 +460,7 @@ impl LineOptions {
 /// `on_request` / `on_response` コールバックはシリアライズ対象外であり、ビルダー自体も
 /// serde を実装しない。コールバックは [`with_on_request`](Self::with_on_request) /
 /// [`with_on_response`](Self::with_on_response) で実行時に設定すること。
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct LineOptionsBuilder {
     prefix_url: Option<String>,
     timeout_duration: Option<Duration>,
@@ -718,11 +718,7 @@ mod tests {
     #[test]
     fn test_request_log_headers_none_contract() {
         let body = serde_json::Value::Null;
-        let log = LineRequestLog {
-            headers: None,
-            body: &body,
-            redacted_body_keys: &DEFAULT_REDACTED_BODY_KEYS,
-        };
+        let log = LineRequestLog::new(None, &body, &DEFAULT_REDACTED_BODY_KEYS);
         assert!(log.headers().is_none());
         assert!(log.headers_redacted().is_none());
     }

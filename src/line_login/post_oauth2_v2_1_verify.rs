@@ -91,11 +91,10 @@ mod tests {
             user_id: None,
         };
 
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
 
         let (response, header) = post_oauth2_v2_1_verify::execute(&request_body, &options)
             .await
