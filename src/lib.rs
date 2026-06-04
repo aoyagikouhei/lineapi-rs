@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use rand::{RngExt, rngs::StdRng};
 use reqwest::{
-    Method, RequestBuilder, Response, StatusCode,
+    RequestBuilder, Response, StatusCode,
     header::{self, AUTHORIZATION, HeaderMap},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -24,7 +24,7 @@ pub use option::{
     REDACTED_BODY_KEYS, ResponseBody,
 };
 // クレート内部で使うログヘルパー。`crate::serialize_log_body` 等の従来パスを維持する。
-pub(crate) use option::{run_log_callback, serialize_log_body};
+pub(crate) use option::{CapturedRequest, run_log_callback, serialize_log_body};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LineResponseHeader {
@@ -111,31 +111,37 @@ pub(crate) async fn execute_api_raw(
     let need_log = options.on_request.is_some() || options.on_response.is_some();
 
     // リクエストの観測情報(headers / method / path / query)を取得(コールバック設定時のみ)。
-    // try_clone -> build で Request を得て、同じ Request から 4 つをまとめて clone/複製する。
+    // try_clone -> build で Request を得て、同じ Request から `CapturedRequest` にまとめて複製する。
     // リトライキー付与後の builder を受け取るので X-Line-Retry-Key も含まれる。
-    // try_clone / build に失敗した場合は None とし、捕捉失敗を呼び出し側へ伝える(4 つは同運命)。
-    let captured: Option<(HeaderMap, Method, String, Option<String>)> = if need_log {
-        builder.try_clone().and_then(|b| b.build().ok()).map(|req| {
-            (
-                req.headers().clone(),
-                req.method().clone(),
-                req.url().path().to_string(),
-                req.url().query().map(|q| q.to_string()),
-            )
-        })
+    // try_clone / build に失敗した場合は None とし、捕捉失敗を呼び出し側へ伝える(headers/method/path
+    // は単一 Option で同運命。query はクエリ文字列が無いリクエストでは捕捉成功でも内側 None になる)。
+    let captured: Option<CapturedRequest> = if need_log {
+        builder
+            .try_clone()
+            .and_then(|b| b.build().ok())
+            .map(|req| CapturedRequest {
+                headers: req.headers().clone(),
+                method: req.method().clone(),
+                path: req.url().path().to_string(),
+                query: req.url().query().map(|q| q.to_string()),
+            })
     } else {
         None
     };
+    // 捕捉に失敗したとき(コールバック設定時のみ意味を持つ)は、ログ上 method/path/query/headers が
+    // すべて None になる理由を debug ログに残しておく(ログは観測の副経路なので失敗しても続行)。
+    if need_log && captured.is_none() {
+        tracing::debug!(
+            "request capture (try_clone/build) failed; headers/method/path/query will be None in logs"
+        );
+    }
 
     let redacted_body_keys = options.get_redacted_body_keys();
 
     if let Some(cb) = &options.on_request {
         run_log_callback("on_request", || {
             cb(&LineRequestLog::new(
-                captured.as_ref().map(|c| &c.0),
-                captured.as_ref().map(|c| &c.1),
-                captured.as_ref().map(|c| c.2.as_str()),
-                captured.as_ref().and_then(|c| c.3.as_deref()),
+                captured.as_ref(),
                 request_value,
                 redacted_body_keys,
             ));
@@ -168,14 +174,7 @@ pub(crate) async fn execute_api_raw(
         };
         run_log_callback("on_response", || {
             cb(
-                &LineRequestLog::new(
-                    captured.as_ref().map(|c| &c.0),
-                    captured.as_ref().map(|c| &c.1),
-                    captured.as_ref().map(|c| c.2.as_str()),
-                    captured.as_ref().and_then(|c| c.3.as_deref()),
-                    request_value,
-                    redacted_body_keys,
-                ),
+                &LineRequestLog::new(captured.as_ref(), request_value, redacted_body_keys),
                 &LineResponseLog::new(
                     &response_headers,
                     response_body,
