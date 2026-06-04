@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use rand::{RngExt, rngs::StdRng};
 use reqwest::{
-    RequestBuilder, Response, StatusCode,
+    Method, RequestBuilder, Response, StatusCode,
     header::{self, AUTHORIZATION, HeaderMap},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -110,15 +110,19 @@ pub(crate) async fn execute_api_raw(
 ) -> Result<(serde_json::Value, LineResponseHeader, StatusCode), Box<Error>> {
     let need_log = options.on_request.is_some() || options.on_response.is_some();
 
-    // リクエストヘッダーを取得(コールバック設定時のみ)。
-    // try_clone -> build で Request を得て headers を clone する。
+    // リクエストの観測情報(headers / method / path / query)を取得(コールバック設定時のみ)。
+    // try_clone -> build で Request を得て、同じ Request から 4 つをまとめて clone/複製する。
     // リトライキー付与後の builder を受け取るので X-Line-Retry-Key も含まれる。
-    // try_clone / build に失敗した場合は None とし、捕捉失敗を呼び出し側へ伝える。
-    let request_headers: Option<HeaderMap> = if need_log {
-        builder
-            .try_clone()
-            .and_then(|b| b.build().ok())
-            .map(|req| req.headers().clone())
+    // try_clone / build に失敗した場合は None とし、捕捉失敗を呼び出し側へ伝える(4 つは同運命)。
+    let captured: Option<(HeaderMap, Method, String, Option<String>)> = if need_log {
+        builder.try_clone().and_then(|b| b.build().ok()).map(|req| {
+            (
+                req.headers().clone(),
+                req.method().clone(),
+                req.url().path().to_string(),
+                req.url().query().map(|q| q.to_string()),
+            )
+        })
     } else {
         None
     };
@@ -128,7 +132,10 @@ pub(crate) async fn execute_api_raw(
     if let Some(cb) = &options.on_request {
         run_log_callback("on_request", || {
             cb(&LineRequestLog::new(
-                request_headers.as_ref(),
+                captured.as_ref().map(|c| &c.0),
+                captured.as_ref().map(|c| &c.1),
+                captured.as_ref().map(|c| c.2.as_str()),
+                captured.as_ref().and_then(|c| c.3.as_deref()),
                 request_value,
                 redacted_body_keys,
             ));
@@ -161,7 +168,14 @@ pub(crate) async fn execute_api_raw(
         };
         run_log_callback("on_response", || {
             cb(
-                &LineRequestLog::new(request_headers.as_ref(), request_value, redacted_body_keys),
+                &LineRequestLog::new(
+                    captured.as_ref().map(|c| &c.0),
+                    captured.as_ref().map(|c| &c.1),
+                    captured.as_ref().map(|c| c.2.as_str()),
+                    captured.as_ref().and_then(|c| c.3.as_deref()),
+                    request_value,
+                    redacted_body_keys,
+                ),
                 &LineResponseLog::new(
                     &response_headers,
                     response_body,

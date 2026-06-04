@@ -1,5 +1,11 @@
 ## Changes
 
+### v0.11.0 (2026/06/04)
+#### New Features
+- add `method()` / `path()` / `query()` / `query_redacted()` accessors to `LineRequestLog`
+  - `method()` returns `Option<&reqwest::Method>`, `path()` returns the URL path as `Option<&str>` (e.g. `/v2/bot/message/push`); both are `None` only when the request capture failed (same contract as `headers()`)
+  - `query()` returns the **raw** URL query string (`Option<&str>`), which may carry secrets (GET verify puts `access_token` in the query); `query_redacted()` returns a copy with known secret keys masked via the same `REDACTED_BODY_KEYS` / `with_redacted_body_keys` allowlist (so GET verify's `access_token` is masked). `Debug` for `LineRequestLog` uses the redacted query
+
 ### v0.10.0 (2026/06/04)
 #### Breaking Change
 - the `with_*` setters moved off `LineOptions` onto a new `LineOptionsBuilder`; construct options with `LineOptions::builder().with_*(...).build()` instead of `LineOptions::default().with_*(...)`. `LineOptions::default()` (no-op config) and the `get_*` accessors are unchanged
