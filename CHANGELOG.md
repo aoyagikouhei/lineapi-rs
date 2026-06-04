@@ -1,12 +1,16 @@
 ## Changes
 
 ### v0.10.0 (2026/06/04)
+#### Breaking Change
+- the `with_*` setters moved off `LineOptions` onto a new `LineOptionsBuilder`; construct options with `LineOptions::builder().with_*(...).build()` instead of `LineOptions::default().with_*(...)`. `LineOptions::default()` (no-op config) and the `get_*` accessors are unchanged
 #### New Features
-- add `LineOptions::with_redacted_body_keys` to configure the keys masked by `body_redacted()`
+- add `LineOptionsBuilder` (obtained via `LineOptions::builder()` / `LineOptionsBuilder::new()`) carrying all `with_*` setters and a `build()` finalizer
+- add `LineOptionsBuilder::with_redacted_body_keys` to configure the keys masked by `body_redacted()`
   - when unset, the default remains `REDACTED_BODY_KEYS` (`client_secret`, `access_token`, `refresh_token`, `code`, `code_verifier`, `id_token`, `userAccessToken`)
   - the supplied keys **replace** the default set (not merged); include `REDACTED_BODY_KEYS` to keep them
   - keys are normalized to lowercase and matched case-insensitively; an empty set disables masking
   - add `LineOptions::get_redacted_body_keys()` returning the effective keys (the default when unset)
+- move `LineOptions` / `LineRequestLog` / `LineResponseLog` and the log-redaction code into a new `option` module; the public types remain re-exported at the crate root (`lineapi::LineOptions` etc. keep working)
 
 ### v0.9.0 (2026/06/02)
 #### Breaking Change

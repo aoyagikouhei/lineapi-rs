@@ -115,7 +115,7 @@ impl<'a> LineRequestLog<'a> {
     /// ボディ([`body`](Self::body))の既知の秘匿キーを `***` に置換した複製を返す。
     ///
     /// マスク対象キーは [`LineOptions`] の設定値
-    /// ([`with_redacted_body_keys`](LineOptions::with_redacted_body_keys))、未設定時は [`REDACTED_BODY_KEYS`]
+    /// ([`with_redacted_body_keys`](LineOptionsBuilder::with_redacted_body_keys))、未設定時は [`REDACTED_BODY_KEYS`]
     /// (`client_secret` / `access_token` / `refresh_token` / `code` / `code_verifier` /
     /// `id_token` / `userAccessToken`)。ネストしたオブジェクト/配列も再帰的に走査する。
     ///
@@ -229,7 +229,7 @@ impl<'a> LineResponseLog<'a> {
     /// ボディ([`as_value`](Self::as_value))の既知の秘匿キーを `***` に置換した複製を返す。
     ///
     /// マスク対象キーは [`LineOptions`] の設定値
-    /// ([`with_redacted_body_keys`](LineOptions::with_redacted_body_keys))、未設定時は [`REDACTED_BODY_KEYS`]。token
+    /// ([`with_redacted_body_keys`](LineOptionsBuilder::with_redacted_body_keys))、未設定時は [`REDACTED_BODY_KEYS`]。token
     /// レスポンスの `access_token` / `refresh_token` / `id_token` などをマスクする。
     ///
     /// # 限界(許可リスト方式)
@@ -285,7 +285,7 @@ fn redact_headers(headers: &HeaderMap) -> HeaderMap {
 
 /// ボディ JSON を再帰的に走査し、`keys` に該当するキーの値を `***` に置換した複製を返す
 /// (キー比較は大文字小文字を無視)。`keys` は小文字で渡される前提
-/// ([`with_redacted_body_keys`](LineOptions::with_redacted_body_keys)が正規化、既定の
+/// ([`with_redacted_body_keys`](LineOptionsBuilder::with_redacted_body_keys)が正規化、既定の
 /// [`REDACTED_BODY_KEYS`] も全小文字)。
 fn redact_body(value: &serde_json::Value, keys: &[String]) -> serde_json::Value {
     match value {
@@ -353,8 +353,11 @@ pub type OnResponse = Arc<dyn Fn(&LineRequestLog, &LineResponseLog) + Send + Syn
 /// `on_request` / `on_response` コールバックは `#[serde(skip)]` 指定のため
 /// **シリアライズ/デシリアライズの対象外**。設定済みの `LineOptions` を serialize →
 /// deserialize するとコールバックは失われる(`None` になる)。コールバックは
-/// [`with_on_request`](Self::with_on_request) /
-/// [`with_on_response`](Self::with_on_response) で実行時に設定すること。
+/// [`LineOptionsBuilder::with_on_request`] /
+/// [`LineOptionsBuilder::with_on_response`] で実行時に設定すること。
+///
+/// インスタンスは [`LineOptions::builder`]([`LineOptionsBuilder`])経由で構築する。
+/// 設定無しのデフォルトだけが欲しい場合は [`LineOptions::default`] でもよい。
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct LineOptions {
@@ -388,6 +391,24 @@ impl std::fmt::Debug for LineOptions {
 }
 
 impl LineOptions {
+    /// [`LineOptionsBuilder`] を生成する。
+    ///
+    /// `LineOptions` の設定は本ビルダー経由で行う(`with_*` セッターはビルダー側にある)。
+    /// 何も設定しないデフォルトが欲しいだけなら [`LineOptions::default`] でもよい。
+    ///
+    /// ```
+    /// use lineapi::LineOptions;
+    /// use std::time::Duration;
+    ///
+    /// let options = LineOptions::builder()
+    ///     .with_try_count(3)
+    ///     .with_retry_duration(Duration::from_millis(100))
+    ///     .build();
+    /// ```
+    pub fn builder() -> LineOptionsBuilder {
+        LineOptionsBuilder::default()
+    }
+
     pub fn get_try_count(&self) -> u8 {
         // 0 は 1 に正規化する。0 のままだとリトライループが一度も回らず、
         // 不透明な `Error::Invalid("fail loop")` が返ってしまうため。
@@ -404,7 +425,7 @@ impl LineOptions {
 
     /// 実際に使用されるベース URL を返す。
     ///
-    /// [`with_prefix_url`](Self::with_prefix_url) 未設定時は環境変数 `LINE_API_PREFIX_URL`、
+    /// [`LineOptionsBuilder::with_prefix_url`] 未設定時は環境変数 `LINE_API_PREFIX_URL`、
     /// それも無ければデフォルトの `https://api.line.me` を返す(`make_url` と同じ解決順)。
     pub fn get_prefix_url(&self) -> String {
         self.resolve_prefix_url()
@@ -412,7 +433,7 @@ impl LineOptions {
 
     /// `body_redacted` でマスクされるボディキーの実効値を返す。
     ///
-    /// [`with_redacted_body_keys`](Self::with_redacted_body_keys) 未設定時は既定の
+    /// [`LineOptionsBuilder::with_redacted_body_keys`] 未設定時は既定の
     /// [`REDACTED_BODY_KEYS`] を(`'static` な内部表現で)返す。返るキーはすべて小文字で、
     /// マスク照合は大文字小文字を無視して行われる。
     pub fn get_redacted_body_keys(&self) -> &[String] {
@@ -421,17 +442,71 @@ impl LineOptions {
             .unwrap_or_else(|| &DEFAULT_REDACTED_BODY_KEYS)
     }
 
-    /// `prefix_url` の実効値を解決する(`with_prefix_url` → 環境変数 → デフォルト)。
+    /// `prefix_url` の実効値を解決する(設定値 → 環境変数 → デフォルト)。
     pub(crate) fn resolve_prefix_url(&self) -> String {
         self.prefix_url
             .clone()
             .unwrap_or_else(|| std::env::var(ENV_KEY).unwrap_or_else(|_| PREFIX_URL.to_string()))
     }
+}
+
+/// [`LineOptions`] を組み立てるビルダー。
+///
+/// [`LineOptions::builder`] もしくは [`LineOptionsBuilder::default`] で生成し、各 `with_*`
+/// セッターで設定したのち [`build`](Self::build) で [`LineOptions`] を得る。
+///
+/// # serde について
+///
+/// `on_request` / `on_response` コールバックはシリアライズ対象外であり、ビルダー自体も
+/// serde を実装しない。コールバックは [`with_on_request`](Self::with_on_request) /
+/// [`with_on_response`](Self::with_on_response) で実行時に設定すること。
+#[derive(Default)]
+pub struct LineOptionsBuilder {
+    prefix_url: Option<String>,
+    timeout_duration: Option<Duration>,
+    try_count: Option<u8>,
+    retry_duration: Option<Duration>,
+    on_request: Option<OnRequest>,
+    on_response: Option<OnResponse>,
+    redacted_body_keys: Option<Vec<String>>,
+}
+
+// Debug を導出せず手実装するのは意図的。`on_request` / `on_response` はクロージャ
+// (`Arc<dyn Fn>`)で Debug を持たないため、設定有無のみを表示する。
+impl std::fmt::Debug for LineOptionsBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LineOptionsBuilder")
+            .field("prefix_url", &self.prefix_url)
+            .field("timeout_duration", &self.timeout_duration)
+            .field("try_count", &self.try_count)
+            .field("retry_duration", &self.retry_duration)
+            .field("on_request", &self.on_request.as_ref().map(|_| "Fn"))
+            .field("on_response", &self.on_response.as_ref().map(|_| "Fn"))
+            .field("redacted_body_keys", &self.redacted_body_keys)
+            .finish()
+    }
+}
+
+impl LineOptionsBuilder {
+    /// 空のビルダーを生成する([`LineOptionsBuilder::default`] と同じ)。
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 設定を確定して [`LineOptions`] を生成する。
+    pub fn build(self) -> LineOptions {
+        LineOptions {
+            prefix_url: self.prefix_url,
+            timeout_duration: self.timeout_duration,
+            try_count: self.try_count,
+            retry_duration: self.retry_duration,
+            on_request: self.on_request,
+            on_response: self.on_response,
+            redacted_body_keys: self.redacted_body_keys,
+        }
+    }
 
     /// API のベース URL を設定する。
-    ///
-    /// `LineOptions` は `#[non_exhaustive]` のため、外部クレートからは構造体リテラルでは
-    /// 構築できない。`LineOptions::default()` と各 `with_*` メソッドを併用すること。
     pub fn with_prefix_url(mut self, prefix_url: impl Into<String>) -> Self {
         self.prefix_url = Some(prefix_url.into());
         self
@@ -445,7 +520,7 @@ impl LineOptions {
 
     /// 試行回数(リトライ含む)を設定する。
     ///
-    /// `0` を渡しても保存値はそのまま `0` だが、実行時に [`get_try_count`](Self::get_try_count)
+    /// `0` を渡しても保存値はそのまま `0` だが、実行時に [`LineOptions::get_try_count`]
     /// が最低 1 回として正規化する(設定時ではなく読み取り時の正規化)。
     pub fn with_try_count(mut self, try_count: u8) -> Self {
         self.try_count = Some(try_count);
@@ -593,28 +668,38 @@ mod tests {
     fn test_get_try_count_normalizes_zero() {
         assert_eq!(LineOptions::default().get_try_count(), 1, "None は 1");
         assert_eq!(
-            LineOptions::default().with_try_count(0).get_try_count(),
+            LineOptions::builder()
+                .with_try_count(0)
+                .build()
+                .get_try_count(),
             1,
             "0 は 1 に正規化"
         );
         assert_eq!(
-            LineOptions::default().with_try_count(3).get_try_count(),
+            LineOptions::builder()
+                .with_try_count(3)
+                .build()
+                .get_try_count(),
             3,
             "それ以外はそのまま"
         );
         // 保存値は正規化しない(正規化は読み取り時のみ)。
-        assert_eq!(LineOptions::default().with_try_count(0).try_count, Some(0));
+        assert_eq!(
+            LineOptions::builder().with_try_count(0).build().try_count,
+            Some(0)
+        );
     }
 
     // on_request / on_response は #[serde(skip)] のため、serialize -> deserialize で
     // コールバックは失われるが、他のフィールドは保持される。
     #[test]
     fn test_line_options_serde_round_trip_drops_callbacks() {
-        let options = LineOptions::default()
+        let options = LineOptions::builder()
             .with_prefix_url("https://example.com")
             .with_try_count(3)
             .with_on_request(|_log| {})
-            .with_on_response(|_req, _res| {});
+            .with_on_response(|_req, _res| {})
+            .build();
         assert!(options.on_request.is_some());
 
         let json = serde_json::to_string(&options).unwrap();
@@ -671,7 +756,9 @@ mod tests {
     // camelCase の JSON キーにもマッチする。
     #[test]
     fn test_with_redacted_body_keys_replaces_and_normalizes() {
-        let options = LineOptions::default().with_redacted_body_keys(["mySecret", "apiKey"]);
+        let options = LineOptions::builder()
+            .with_redacted_body_keys(["mySecret", "apiKey"])
+            .build();
         // 大文字小文字無視で照合できるよう小文字に正規化されている
         assert_eq!(
             options.get_redacted_body_keys(),
@@ -694,7 +781,9 @@ mod tests {
     // 空のキーを渡すとマスク対象が無くなる(body_redacted が素通しになる)。
     #[test]
     fn test_with_redacted_body_keys_empty_disables_masking() {
-        let options = LineOptions::default().with_redacted_body_keys(Vec::<String>::new());
+        let options = LineOptions::builder()
+            .with_redacted_body_keys(Vec::<String>::new())
+            .build();
         let input = serde_json::json!({ "access_token": "at" });
         let out = redact_body(&input, options.get_redacted_body_keys());
         assert_eq!(out["access_token"], "at", "空指定ならマスクされない");

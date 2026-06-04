@@ -124,13 +124,12 @@ mod tests {
 
         let captured = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            c.lock().unwrap().push(log.body().clone());
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |log| {
+                c.lock().unwrap().push(log.body().clone());
+            })
+            .build();
 
         let _res = get_friendship_v1_status::execute("test_access_token", &options)
             .await

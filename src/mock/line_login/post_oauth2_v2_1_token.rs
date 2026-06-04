@@ -269,18 +269,17 @@ mod tests {
         let res_redacted = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
         let rq = req.clone();
         let rs = res_redacted.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            rq.lock()
-                .unwrap()
-                .push((log.body().clone(), log.body_redacted()));
-        })
-        .with_on_response(move |_req, res| {
-            rs.lock().unwrap().push(res.body_redacted());
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |log| {
+                rq.lock()
+                    .unwrap()
+                    .push((log.body().clone(), log.body_redacted()));
+            })
+            .with_on_response(move |_req, res| {
+                rs.lock().unwrap().push(res.body_redacted());
+            })
+            .build();
 
         let request_body = post_oauth2_v2_1_token::RequestBody::AuthorizationCode {
             code: "auth_code_123".to_string(),

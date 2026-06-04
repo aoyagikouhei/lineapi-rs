@@ -20,8 +20,8 @@ pub mod mock;
 // `LineOptions` / ログ関連型は `option` モジュールへ移動した。クレートルートからも
 // 従来どおりのパス(`lineapi::LineOptions` 等)で参照できるよう再エクスポートする。
 pub use option::{
-    LineOptions, LineRequestLog, LineResponseLog, OnRequest, OnResponse, REDACTED_BODY_KEYS,
-    ResponseBody,
+    LineOptions, LineOptionsBuilder, LineRequestLog, LineResponseLog, OnRequest, OnResponse,
+    REDACTED_BODY_KEYS, ResponseBody,
 };
 // クレート内部で使うログヘルパー。`crate::serialize_log_body` 等の従来パスを維持する。
 pub(crate) use option::{run_log_callback, serialize_log_body};
@@ -311,9 +311,10 @@ mod tests {
             .create_async()
             .await;
         let url = format!("{}/test", server.url());
-        let options = LineOptions::default()
+        let options = LineOptions::builder()
             .with_on_request(|_log| panic!("on_request callback panics"))
-            .with_on_response(|_req, _res| panic!("on_response callback panics"));
+            .with_on_response(|_req, _res| panic!("on_response callback panics"))
+            .build();
 
         let result: Result<(serde_json::Value, LineResponseHeader), _> = execute_api(
             || reqwest::Client::new().get(&url),

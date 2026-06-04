@@ -42,25 +42,28 @@ LINE API library supporting both LINE Messaging API and LINE Login API.
 
 ## Logging (v0.9.0)
 
-Attach `on_request` / `on_response` callbacks to `LineOptions` to observe every HTTP request and response. The callbacks receive **un-redacted** logs (the `Authorization` header and OAuth body secrets such as `client_secret` / `access_token` are present in the clear), so always mask before logging — use the `*_redacted()` helpers, or the `Debug` impl which redacts automatically.
+Build a `LineOptions` with `LineOptions::builder()` and attach `on_request` / `on_response` callbacks to observe every HTTP request and response. The callbacks receive **un-redacted** logs (the `Authorization` header and OAuth body secrets such as `client_secret` / `access_token` are present in the clear), so always mask before logging — use the `*_redacted()` helpers, or the `Debug` impl which redacts automatically.
 
 ```rust
 use lineapi::LineOptions;
 
-let options = LineOptions::default()
+let options = LineOptions::builder()
     .with_on_request(|log| {
         // `log.body()` / `log.headers()` are UN-redacted — mask before logging.
         println!("[LINE request] {}", log.body_redacted());
     })
     .with_on_response(|_req, res| {
         println!("[LINE response] status={} body={}", res.status_code(), res.body_redacted());
-    });
+    })
+    .build();
 ```
+
+All configuration (`with_prefix_url` / `with_timeout_duration` / `with_try_count` / `with_retry_duration` / `with_redacted_body_keys` / `with_on_request` / `with_on_response`) lives on `LineOptionsBuilder`; finish with `.build()`. For a no-op config, `LineOptions::default()` still works.
 
 Notes:
 - Callbacks fire once **per retry attempt** (up to `try_count`); for streaming endpoints (`make_stream` / `execute_stream`) they additionally fire once **per page**.
 - `body_redacted()` masks an allowlist of known secret keys only (default: `REDACTED_BODY_KEYS`); unknown keys are not masked.
-- Customize the masked keys with `LineOptions::with_redacted_body_keys([...])`. It **replaces** the default set (it does not merge — include `REDACTED_BODY_KEYS` if you want to keep them). Keys are normalized to lowercase and matched case-insensitively; passing an empty set disables masking.
+- Customize the masked keys with `LineOptionsBuilder::with_redacted_body_keys([...])`. It **replaces** the default set (it does not merge — include `REDACTED_BODY_KEYS` if you want to keep them). Keys are normalized to lowercase and matched case-insensitively; passing an empty set disables masking.
 - A panic inside a callback is caught and logged via `tracing::error!`; the API call keeps running.
 
 ## Examples

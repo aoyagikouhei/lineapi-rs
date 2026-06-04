@@ -40,7 +40,7 @@ fn credentials() -> (String, String, String) {
 // コールバックが受け取るログは未マスク(client_secret や access_token を生で含む)なので、
 // 出力前に必ず `*_redacted()` でマスクする(`Debug` も同様にマスクして出力される)。
 fn logging_options() -> LineOptions {
-    LineOptions::default()
+    LineOptions::builder()
         .with_on_request(|log| {
             println!("[LINE request] {}", log.body_redacted());
         })
@@ -51,6 +51,7 @@ fn logging_options() -> LineOptions {
                 res.body_redacted()
             );
         })
+        .build()
 }
 
 async fn root(cookies: Cookies) -> impl IntoResponse {
