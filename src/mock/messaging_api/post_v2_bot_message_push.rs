@@ -190,8 +190,15 @@ mod tests {
         builder.messages(messages.clone());
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        // (has_authorization_header, request_body)
-        let captured_req = Arc::new(Mutex::new(Vec::<(bool, serde_json::Value)>::new()));
+        // (has_authorization_header, method, path, query, request_body)
+        type CapturedReq = (
+            bool,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            serde_json::Value,
+        );
+        let captured_req = Arc::new(Mutex::new(Vec::<CapturedReq>::new()));
         // (status_code, response_body)
         let captured_res = Arc::new(Mutex::new(Vec::<(u16, serde_json::Value)>::new()));
 
@@ -203,7 +210,13 @@ mod tests {
                 let has_auth = log
                     .headers()
                     .is_some_and(|h| h.contains_key("authorization"));
-                creq.lock().unwrap().push((has_auth, log.body().clone()));
+                creq.lock().unwrap().push((
+                    has_auth,
+                    log.method().map(|m| m.to_string()),
+                    log.path().map(|p| p.to_string()),
+                    log.query().map(|q| q.to_string()),
+                    log.body().clone(),
+                ));
             })
             .with_on_response(move |_req, res| {
                 cres.lock()
@@ -225,12 +238,23 @@ mod tests {
 
         mock.assert_async().await;
 
-        // on_request: 1回、Authorizationヘッダー付き、bodyにto/messagesを含む
+        // on_request: 1回、Authorizationヘッダー付き、method/path 捕捉、bodyにto/messagesを含む
         let reqs = captured_req.lock().unwrap();
         assert_eq!(reqs.len(), 1);
         assert!(reqs[0].0, "authorization header must be present");
-        assert_eq!(reqs[0].1["to"], json!("U123456789"));
-        assert!(reqs[0].1["messages"].is_array());
+        assert_eq!(
+            reqs[0].1.as_deref(),
+            Some("POST"),
+            "method must be captured"
+        );
+        assert_eq!(
+            reqs[0].2.as_deref(),
+            Some("/v2/bot/message/push"),
+            "path must be captured"
+        );
+        assert_eq!(reqs[0].3, None, "POST push has no query string");
+        assert_eq!(reqs[0].4["to"], json!("U123456789"));
+        assert!(reqs[0].4["messages"].is_array());
 
         // on_response: 1回、status 200、レスポンスJSONを含む
         let ress = captured_res.lock().unwrap();

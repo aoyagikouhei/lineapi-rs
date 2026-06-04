@@ -38,7 +38,7 @@ LINE API library supporting both LINE Messaging API and LINE Login API.
 - Mock support for testing
 - Stream support for large data
 - PKCE (Proof Key for Code Exchange) support for OAuth
-- Request/response logging via `on_request` / `on_response` callbacks (v0.9.0), with built-in secret redaction (`headers_redacted` / `body_redacted`, and a redacting `Debug`)
+- Request/response logging via `on_request` / `on_response` callbacks (v0.9.0), with built-in secret redaction (`headers_redacted` / `body_redacted` / `query_redacted`, and a redacting `Debug`); the request log also carries the `method()` / `path()` / `query()` of the call (v0.11.0)
 
 ## Logging
 
@@ -49,8 +49,16 @@ use lineapi::LineOptions;
 
 let options = LineOptions::builder()
     .with_on_request(|log| {
-        // `log.body()` / `log.headers()` are UN-redacted — mask before logging.
-        println!("[LINE request] {}", log.body_redacted());
+        // `log.method()` / `log.path()` identify the endpoint; `log.query()` is the raw
+        // query string (may carry secrets — use `query_redacted()`).
+        // `log.body()` / `log.headers()` / `log.query()` are UN-redacted — mask before logging.
+        println!(
+            "[LINE request] {:?} {:?} query={:?} body={}",
+            log.method(),
+            log.path(),
+            log.query_redacted(),
+            log.body_redacted(),
+        );
     })
     .with_on_response(|_req, res| {
         println!("[LINE response] status={} body={}", res.status_code(), res.body_redacted());
@@ -62,6 +70,7 @@ All configuration (`with_prefix_url` / `with_timeout_duration` / `with_try_count
 
 Notes:
 - Callbacks fire once **per retry attempt** (up to `try_count`); for streaming endpoints (`make_stream` / `execute_stream`) they additionally fire once **per page**.
+- `LineRequestLog` also exposes `method()` / `path()` / `query()`; `method()` and `path()` are `None` only when the request capture fails (same contract as `headers()`). `query()` is the raw URL query string and may contain secrets (GET verify puts `access_token` there) — use `query_redacted()`, which masks the same allowlist of keys as `body_redacted()`.
 - `body_redacted()` masks an allowlist of known secret keys only (default: `REDACTED_BODY_KEYS`); unknown keys are not masked.
 - Customize the masked keys with `LineOptionsBuilder::with_redacted_body_keys([...])`. It **replaces** the default set (it does not merge — include `REDACTED_BODY_KEYS` if you want to keep them). Keys are normalized to lowercase and matched case-insensitively; passing an empty set disables masking.
 - A panic inside a callback is caught and logged via `tracing::error!`; the API call keeps running.

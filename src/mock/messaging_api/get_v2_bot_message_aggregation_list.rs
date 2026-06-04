@@ -204,12 +204,18 @@ mod tests {
         builder.custom_aggregation_units(vec!["unit1".to_string()]);
         let mock = make_mock(&mut server, Some(builder)).await;
 
-        let captured_req = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        // (path, query, body)
+        type CapturedReq = (Option<String>, Option<String>, serde_json::Value);
+        let captured_req = Arc::new(Mutex::new(Vec::<CapturedReq>::new()));
         let creq = captured_req.clone();
         let options = LineOptions::builder()
             .with_prefix_url(server.url())
             .with_on_request(move |log| {
-                creq.lock().unwrap().push(log.body().clone());
+                creq.lock().unwrap().push((
+                    log.path().map(|p| p.to_string()),
+                    log.query().map(|q| q.to_string()),
+                    log.body().clone(),
+                ));
             })
             .build();
 
@@ -230,16 +236,20 @@ mod tests {
 
         let reqs = captured_req.lock().unwrap();
         assert_eq!(reqs.len(), 1);
+        let (path, query, body) = &reqs[0];
+        // GET エンドポイントの path が捕捉される
+        assert_eq!(path.as_deref(), Some("/v2/bot/message/aggregation/list"));
+        // URL の生クエリ文字列が捕捉される(limit=50、None の start は含まれない)
+        assert_eq!(query.as_deref(), Some("limit=50"));
         // クエリパラメータが JSON オブジェクトとしてログボディに載る(Value::Null ではない)
-        assert_ne!(reqs[0], serde_json::Value::Null);
+        assert_ne!(*body, serde_json::Value::Null);
         assert!(
-            reqs[0].is_object(),
-            "query body must be a JSON object, got: {}",
-            reqs[0]
+            body.is_object(),
+            "query body must be a JSON object, got: {body}"
         );
-        assert_eq!(reqs[0]["limit"], 50);
+        assert_eq!(body["limit"], 50);
         // None のクエリ(start)は serialize_log_body でスキップされ、キー自体が無い
-        assert!(reqs[0].get("start").is_none());
+        assert!(body.get("start").is_none());
     }
 
     // make_stream はページごとに execute を呼ぶため、on_request / on_response コールバックは

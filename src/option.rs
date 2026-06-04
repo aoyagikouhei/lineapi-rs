@@ -10,7 +10,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use reqwest::{
-    StatusCode,
+    Method, StatusCode,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
 use serde::{Deserialize, Serialize};
@@ -40,15 +40,41 @@ const REDACTED: &str = "***";
 /// ログ出力時は [`headers_redacted`](Self::headers_redacted) でヘッダーを、
 /// [`body_redacted`](Self::body_redacted) でボディの既知の秘匿キーをマスクできる。
 ///
-/// なお、クエリ文字列に秘匿情報を載せるエンドポイント(GET verify の `access_token`)は
-/// コールバックへ渡されない([`headers`](Self::headers) にも [`body`](Self::body) にも
-/// 現れない)ため、呼び出し側でマスクする対象は存在しない。
+/// クエリ文字列に秘匿情報を載せるエンドポイント(GET verify の `access_token`)もあるため、
+/// クエリは [`query`](Self::query) で生値が、[`query_redacted`](Self::query_redacted) で
+/// 既知の秘匿キー(`access_token` 等)をマスクした値が得られる。GET verify の `access_token`
+/// は既定の [`REDACTED_BODY_KEYS`] に含まれるため [`query_redacted`](Self::query_redacted) で
+/// マスクされる。ログ出力時は各 `*_redacted` ヘルパーを使うこと。
 #[derive(Clone)]
 pub struct LineRequestLog<'a> {
-    headers: Option<&'a HeaderMap>,
+    /// 送信直前にリクエストから捕捉した観測情報。`try_clone` / `build` 失敗時は `None`。
+    ///
+    /// `headers` / `method` / `path` は単一の `Option` 配下にまとめてあるため、これらは
+    /// **必ず同運命**(全部 `Some` か全部 `None`)であり、「method はあるが path は無い」のような
+    /// 不整合な状態は表現できない。クエリの有無は [`CapturedRequest::query`] の内側 `Option` で
+    /// 別途表す(捕捉成功でもクエリ文字列が無ければ `None`)。
+    captured: Option<&'a CapturedRequest>,
     body: &'a serde_json::Value,
     /// マスク対象のボディキー(`LineOptions` の設定値、未設定時は [`REDACTED_BODY_KEYS`])。
     redacted_body_keys: &'a [String],
+}
+
+/// 送信直前のリクエストから捕捉した観測情報(`headers` / `method` / `path` / `query`)。
+///
+/// `try_clone` -> `build` で得た 1 つの `reqwest::Request` から複製するため、これらは互いに
+/// 整合している(同じ試行・同じリトライキー状態)。[`LineRequestLog`] は本体を
+/// `Option<&CapturedRequest>` で保持し、捕捉失敗(`None`)と捕捉成功(`Some`)を 1 つの
+/// `Option` で表すことで「一部だけ捕捉できた」不整合状態を表現不能にしている。
+#[derive(Clone)]
+pub(crate) struct CapturedRequest {
+    /// リクエストヘッダー。
+    pub(crate) headers: HeaderMap,
+    /// HTTP メソッド(`GET` / `POST` など)。
+    pub(crate) method: Method,
+    /// リクエスト URL のパス(クエリ文字列は含まない)。
+    pub(crate) path: String,
+    /// リクエスト URL の生クエリ文字列。クエリが無いリクエストでは `None`(捕捉失敗とは別概念)。
+    pub(crate) query: Option<String>,
 }
 
 // Debug を導出せず手実装するのは意図的。導出すると `{:?}` / `tracing::*(?log)` で
@@ -57,6 +83,9 @@ pub struct LineRequestLog<'a> {
 impl std::fmt::Debug for LineRequestLog<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LineRequestLog")
+            .field("method", &self.method())
+            .field("path", &self.path())
+            .field("query", &self.query_redacted())
             .field("headers", &self.headers_redacted())
             .field("body", &self.body_redacted())
             .finish()
@@ -65,16 +94,67 @@ impl std::fmt::Debug for LineRequestLog<'_> {
 
 impl<'a> LineRequestLog<'a> {
     /// クレート内部からログ情報を組み立てる(フィールドは非公開のため `new` 経由で構築する)。
+    ///
+    /// `captured` は送信直前に捕捉した [`CapturedRequest`] への参照(捕捉失敗時は `None`)。
     pub(crate) fn new(
-        headers: Option<&'a HeaderMap>,
+        captured: Option<&'a CapturedRequest>,
         body: &'a serde_json::Value,
         redacted_body_keys: &'a [String],
     ) -> Self {
         Self {
-            headers,
+            captured,
             body,
             redacted_body_keys,
         }
+    }
+
+    /// HTTP メソッド(`GET` / `POST` など)。
+    ///
+    /// リクエストの複製(`try_clone`)や再構築に失敗した場合は `None`
+    /// ([`headers`](Self::headers) と同じ捕捉契約)。
+    pub fn method(&self) -> Option<&'a Method> {
+        self.captured.map(|c| &c.method)
+    }
+
+    /// リクエスト URL のパス(例: `/v2/bot/message/push`)。
+    ///
+    /// リクエストの複製(`try_clone`)や再構築に失敗した場合は `None`
+    /// ([`headers`](Self::headers) と同じ捕捉契約)。クエリ文字列は含まない
+    /// ([`query`](Self::query) を参照)。
+    pub fn path(&self) -> Option<&'a str> {
+        self.captured.map(|c| c.path.as_str())
+    }
+
+    /// リクエスト URL の**生の**クエリ文字列(例: `from=20240101&to=20241231`)。
+    ///
+    /// `None` になるのは「クエリ文字列が無い」場合と「リクエストの捕捉に失敗した」場合の
+    /// 両方。両者を区別したい場合は [`path`](Self::path) を併用する(`path()` が `Some` なら
+    /// 捕捉は成功しており、`query()` が `None` なのは純粋にクエリが無いため)。
+    ///
+    /// **⚠ 秘匿情報に注意**: クエリに秘匿情報を載せるエンドポイント(GET verify の
+    /// `access_token`)があるため、本メソッドの戻り値はマスクされていない生値である。ログ等へ
+    /// 出力する前に [`query_redacted`](Self::query_redacted) でマスクすること。
+    pub fn query(&self) -> Option<&'a str> {
+        self.captured.and_then(|c| c.query.as_deref())
+    }
+
+    /// クエリ文字列([`query`](Self::query))の既知の秘匿キーを `***` に置換した複製を返す。
+    ///
+    /// マスク対象キーは [`LineOptions`] の設定値
+    /// ([`with_redacted_body_keys`](LineOptionsBuilder::with_redacted_body_keys))、未設定時は
+    /// [`REDACTED_BODY_KEYS`](`access_token` 等)。キー比較は大文字小文字を無視する。GET verify の
+    /// `access_token` は既定キーに含まれるためマスクされる。クエリが無い/捕捉失敗時は `None`。
+    ///
+    /// # 限界(許可リスト方式)
+    ///
+    /// マスクは設定されたキーの**完全一致**(大文字小文字無視)のみで行う。リストに無いキーは
+    /// マスクされず素通りする。本メソッドの戻り値を「すべての秘匿情報が除去済み」とみなさないこと。
+    /// また、マスクの有無に関わらず内部の `redact_query` が `url::form_urlencoded` で再エンコード
+    /// するため、**秘匿キーを含まないペアも表現が正規化され得る**(空白の `+`↔`%20` など)。生値の
+    /// 忠実な再現が必要なら [`query`](Self::query) を使うこと。
+    pub fn query_redacted(&self) -> Option<String> {
+        self.query()
+            .map(|q| redact_query(q, self.redacted_body_keys))
     }
 
     /// リクエストヘッダー。
@@ -87,7 +167,7 @@ impl<'a> LineRequestLog<'a> {
     /// 捕捉したヘッダーは `RequestBuilder` を再構築した時点のもので、送信時に reqwest が
     /// 付与する `content-length` / `host` などは含まれない。
     pub fn headers(&self) -> Option<&'a HeaderMap> {
-        self.headers
+        self.captured.map(|c| &c.headers)
     }
 
     /// 各エンドポイントがログ用に渡す論理表現を JSON 化したもの。
@@ -109,7 +189,7 @@ impl<'a> LineRequestLog<'a> {
     /// ヘッダーのみをマスクする。OAuth 系のようにボディへ秘匿情報が入る場合は
     /// [`body_redacted`](Self::body_redacted) を使うこと。捕捉失敗時は `None`。
     pub fn headers_redacted(&self) -> Option<HeaderMap> {
-        self.headers.map(redact_headers)
+        self.headers().map(redact_headers)
     }
 
     /// ボディ([`body`](Self::body))の既知の秘匿キーを `***` に置換した複製を返す。
@@ -249,9 +329,16 @@ impl<'a> LineResponseLog<'a> {
 /// エントリは**すべて小文字**で記載し、マッチは大文字小文字を無視して行う
 /// (例: `userAccessToken` は `useraccesstoken` のエントリでマッチする)。
 ///
-/// これらのキーはリクエスト/レスポンス双方のボディで再帰的にマスクされる(security-first)。
-/// `code` のような汎用キーは、レスポンス側に正当な `code` フィールドがあっても `***` に
-/// 潰し得るが、秘匿情報(OAuth の認可コード)の漏洩回避を優先した意図的な挙動である。
+/// これらのキーはリクエスト/レスポンス双方のボディで再帰的にマスクされ、さらに
+/// [`query_redacted`](LineRequestLog::query_redacted) によるクエリ文字列のマスクにも使われる
+/// (security-first)。`code` のような汎用キーは、レスポンス側に正当な `code` フィールドが
+/// あっても `***` に潰し得るが、秘匿情報(OAuth の認可コード)の漏洩回避を優先した意図的な挙動である。
+///
+/// # メンテナンス上の注意
+///
+/// クエリ文字列やボディに**新たな秘匿情報を載せるエンドポイントを追加する際は、同じ変更内で
+/// そのキーを本リストへ追加すること**。マスクは許可リスト方式(完全一致)であり、リストに無い
+/// 秘匿キーは `*_redacted` を通しても素通りする。`_redacted` という名前を「常に安全」と過信しない。
 pub const REDACTED_BODY_KEYS: &[&str] = &[
     "access_token",
     "refresh_token",
@@ -305,6 +392,28 @@ fn redact_body(value: &serde_json::Value, keys: &[String]) -> serde_json::Value 
         }
         other => other.clone(),
     }
+}
+
+/// 生のクエリ文字列を `key=value` ペアに分解し、`keys` に該当するキーの値を `***` に置換した
+/// クエリ文字列を再構築して返す(キー比較は大文字小文字を無視)。`keys` は小文字で渡される前提
+/// (既定の [`REDACTED_BODY_KEYS`] は全小文字、
+/// [`with_redacted_body_keys`](LineOptionsBuilder::with_redacted_body_keys) も正規化する)。
+///
+/// パース/再エンコードは [`url::form_urlencoded`] を用いるため、`%` エスケープや `+`(空白)も
+/// 正しく解釈される。再エンコードは**秘匿キーを含まないペアにも及ぶ**ため、マスクの有無に関わらず
+/// 表現が正規化され得る(空白の `+`↔`%20`、`=` 無しの裸キー `foo` → `foo=` など)。生値の忠実な
+/// 再現が必要なら呼び出し側は [`LineRequestLog::query`] を使うこと。
+fn redact_query(query: &str, keys: &[String]) -> String {
+    let pairs = url::form_urlencoded::parse(query.as_bytes()).map(|(key, value)| {
+        if keys.contains(&key.to_ascii_lowercase()) {
+            (key.into_owned(), REDACTED.to_string())
+        } else {
+            (key.into_owned(), value.into_owned())
+        }
+    });
+    url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish()
 }
 
 /// ログ用にリクエストボディを JSON 化する。
@@ -713,14 +822,163 @@ mod tests {
         assert!(restored.on_response.is_none());
     }
 
-    // headers が None のとき headers()/headers_redacted() は共に None を返す
-    // (「ヘッダーが空」ではなく「捕捉に失敗」を表す契約)。
+    // テスト用に CapturedRequest を組み立てるヘルパー(headers は空で十分)。
+    fn make_captured(method: Method, path: &str, query: Option<&str>) -> CapturedRequest {
+        CapturedRequest {
+            headers: HeaderMap::new(),
+            method,
+            path: path.to_string(),
+            query: query.map(|q| q.to_string()),
+        }
+    }
+
+    // captured が None のとき全アクセサが None を返す
+    // (「ヘッダーが空」ではなく「捕捉に失敗」を表す契約。headers/method/path は同運命)。
     #[test]
     fn test_request_log_headers_none_contract() {
         let body = serde_json::Value::Null;
         let log = LineRequestLog::new(None, &body, &DEFAULT_REDACTED_BODY_KEYS);
         assert!(log.headers().is_none());
         assert!(log.headers_redacted().is_none());
+        // 捕捉失敗時は method / path / query も None(headers と同じ契約)。
+        assert!(log.method().is_none());
+        assert!(log.path().is_none());
+        assert!(log.query().is_none());
+        assert!(log.query_redacted().is_none());
+    }
+
+    // method / path / query を持つログのアクセサが捕捉値をそのまま返す。
+    #[test]
+    fn test_request_log_method_path_query_accessors() {
+        let body = serde_json::Value::Null;
+        let captured = make_captured(
+            Method::GET,
+            "/v2/bot/message/aggregation/list",
+            Some("limit=5&start=abc"),
+        );
+        let log = LineRequestLog::new(Some(&captured), &body, &DEFAULT_REDACTED_BODY_KEYS);
+        assert_eq!(log.method(), Some(&Method::GET));
+        assert_eq!(log.path(), Some("/v2/bot/message/aggregation/list"));
+        assert_eq!(log.query(), Some("limit=5&start=abc"));
+        // 秘匿キーを含まないクエリは素通し(再エンコードで表現は正規化され得る)。
+        assert_eq!(log.query_redacted().as_deref(), Some("limit=5&start=abc"));
+    }
+
+    // 捕捉成功でもクエリが無いリクエスト(POST 等)では query() / query_redacted() のみ None。
+    // path()/method() は Some なので「クエリ無し」と「捕捉失敗」を区別できる。
+    #[test]
+    fn test_request_log_query_none_but_captured() {
+        let body = serde_json::Value::Null;
+        let captured = make_captured(Method::POST, "/v2/bot/message/push", None);
+        let log = LineRequestLog::new(Some(&captured), &body, &DEFAULT_REDACTED_BODY_KEYS);
+        assert_eq!(log.method(), Some(&Method::POST));
+        assert_eq!(log.path(), Some("/v2/bot/message/push"));
+        // クエリ無し: query は None だが捕捉は成功している(path が Some)。
+        assert!(log.query().is_none());
+        assert!(log.query_redacted().is_none());
+    }
+
+    // GET verify の access_token クエリは query_redacted でマスクされる(秘匿クエリの漏洩回避)。
+    #[test]
+    fn test_request_log_query_redacted_masks_access_token() {
+        let body = serde_json::Value::Null;
+        let captured = make_captured(
+            Method::GET,
+            "/oauth2/v2.1/verify",
+            Some("access_token=super-secret&keep=v"),
+        );
+        let log = LineRequestLog::new(Some(&captured), &body, &DEFAULT_REDACTED_BODY_KEYS);
+        // 生値は秘匿情報を含む
+        assert_eq!(log.query(), Some("access_token=super-secret&keep=v"));
+        // redacted は access_token をマスクし、非秘匿キーは残す。
+        // `***` は form_urlencoded で `*` を percent-encode しないため、そのまま `access_token=***`。
+        let redacted = log.query_redacted().unwrap();
+        assert_eq!(redacted, "access_token=***&keep=v");
+        assert!(
+            !redacted.contains("super-secret"),
+            "生トークンが残っている: {redacted}"
+        );
+    }
+
+    // query_redacted() は per-call の redacted_body_keys フィールド(execute_api_raw が
+    // options.get_redacted_body_keys() から配線)を使う。カスタムキーを LineRequestLog::new に
+    // 渡すと、そのキーがマスクされ既定の access_token は素通しになる(replace セマンティクス)。
+    // query_redacted が REDACTED_BODY_KEYS をハードコードする回帰を検知する(配線レイヤの固定)。
+    #[test]
+    fn test_request_log_query_redacted_uses_per_call_keys() {
+        let body = serde_json::Value::Null;
+        // redact_query は keys を小文字前提で完全一致照合する(option.rs の redact_query/redact_body
+        // 参照)。本テストは with_redacted_body_keys を経由せず new に直接渡すため、その正規化は
+        // 走らない。よってここでは自前で小文字に揃えて渡す必要がある。
+        let custom_keys = ["mysecret".to_string()];
+        let captured = make_captured(
+            Method::GET,
+            "/oauth2/v2.1/verify",
+            Some("mysecret=s&access_token=at"),
+        );
+        let log = LineRequestLog::new(Some(&captured), &body, &custom_keys);
+        // カスタムキーはマスクされ、既定キー access_token は置換セマンティクスでマスクされない。
+        assert_eq!(
+            log.query_redacted().as_deref(),
+            Some("mysecret=***&access_token=at")
+        );
+    }
+
+    // LineRequestLog の Debug 出力はクエリ秘匿情報をマスクする(query_redacted 経由)。
+    // 将来 Debug 実装が query() の生値へ差し替わると `?log` で access_token が漏れるため、
+    // その回帰を検知して秘匿契約を固定する。
+    #[test]
+    fn test_request_log_debug_masks_query_secret() {
+        let body = serde_json::Value::Null;
+        let captured = make_captured(
+            Method::GET,
+            "/oauth2/v2.1/verify",
+            Some("access_token=super-secret&keep=v"),
+        );
+        let log = LineRequestLog::new(Some(&captured), &body, &DEFAULT_REDACTED_BODY_KEYS);
+        let dbg = format!("{log:?}");
+        // マスク済み表現が出ている
+        assert!(dbg.contains("***"), "Debug にマスク表現が無い: {dbg}");
+        // 生トークンは Debug 出力に残らない
+        assert!(
+            !dbg.contains("super-secret"),
+            "生トークンが Debug 出力に漏れている: {dbg}"
+        );
+    }
+
+    // redact_query: 重複キーは両方マスクされる(全ペアを再シリアライズするため)。
+    #[test]
+    fn test_redact_query_masks_duplicate_keys() {
+        let out = redact_query("access_token=a&access_token=b", &DEFAULT_REDACTED_BODY_KEYS);
+        assert_eq!(out, "access_token=***&access_token=***");
+    }
+
+    // redact_query: percent-encoding / `+`(空白)のラウンドトリップ。非秘匿値は復号され、
+    // 再エンコードで空白は `+` に正規化される(`%20` 入力でも `+` 出力)。
+    #[test]
+    fn test_redact_query_roundtrip_encoding() {
+        // `+` も `%20` も空白として解釈され、出力は `+` に正規化される。
+        assert_eq!(redact_query("q=a+b", &DEFAULT_REDACTED_BODY_KEYS), "q=a+b");
+        assert_eq!(
+            redact_query("q=a%20b", &DEFAULT_REDACTED_BODY_KEYS),
+            "q=a+b"
+        );
+    }
+
+    // redact_query: カスタムキー集合ではそのキーがマスクされ、既定の access_token は素通しになる
+    // (replace-not-merge セマンティクスがクエリでも効くことを固定)。
+    #[test]
+    fn test_redact_query_custom_keys() {
+        let keys = vec!["mysecret".to_string()];
+        let out = redact_query("mySecret=s&access_token=at", &keys);
+        // 大文字小文字無視でカスタムキーをマスク
+        assert_eq!(out, "mySecret=***&access_token=at");
+    }
+
+    // redact_query: 空文字列は空のまま(クエリ無しは None なのでここには来ないが防御的に固定)。
+    #[test]
+    fn test_redact_query_empty() {
+        assert_eq!(redact_query("", &DEFAULT_REDACTED_BODY_KEYS), "");
     }
 
     // REDACTED_BODY_KEYS の汎用キー `code` は、レスポンス側の正当な `code` フィールドも

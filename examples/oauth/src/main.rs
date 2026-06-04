@@ -39,10 +39,18 @@ fn credentials() -> (String, String, String) {
 // リクエスト/レスポンスをログ出力する LineOptions を組み立てる。
 // コールバックが受け取るログは未マスク(client_secret や access_token を生で含む)なので、
 // 出力前に必ず `*_redacted()` でマスクする(`Debug` も同様にマスクして出力される)。
+// method() / path() でどのエンドポイントを叩いたかが分かる。query() は生のクエリ文字列
+// (GET verify の access_token 等の秘匿情報を含み得る)なので query_redacted() を使う。
 fn logging_options() -> LineOptions {
     LineOptions::builder()
         .with_on_request(|log| {
-            println!("[LINE request] {}", log.body_redacted());
+            println!(
+                "[LINE request] {:?} {:?} query={:?} body={}",
+                log.method(),
+                log.path(),
+                log.query_redacted(),
+                log.body_redacted(),
+            );
         })
         .with_on_response(|_req, res| {
             println!(
