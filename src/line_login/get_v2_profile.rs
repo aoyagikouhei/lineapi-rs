@@ -50,7 +50,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // ACCESS_TOKEN=xxx cargo test test_line_login_get_v2_profile -- --nocapture --test-threads=1
     #[tokio::test]

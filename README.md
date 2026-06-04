@@ -59,7 +59,8 @@ let options = LineOptions::default()
 
 Notes:
 - Callbacks fire once **per retry attempt** (up to `try_count`); for streaming endpoints (`make_stream` / `execute_stream`) they additionally fire once **per page**.
-- `body_redacted()` masks an allowlist of known secret keys only (see `REDACTED_BODY_KEYS`); unknown keys are not masked.
+- `body_redacted()` masks an allowlist of known secret keys only (default: `REDACTED_BODY_KEYS`); unknown keys are not masked.
+- Customize the masked keys with `LineOptions::with_redacted_body_keys([...])`. It **replaces** the default set (it does not merge — include `REDACTED_BODY_KEYS` if you want to keep them). Keys are normalized to lowercase and matched case-insensitively; passing an empty set disables masking.
 - A panic inside a callback is caught and logged via `tracing::error!`; the API call keeps running.
 
 ## Examples

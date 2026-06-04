@@ -67,7 +67,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // CHANNEL_ACCESS_TOKEN=xxx USER_ACCESS_TOKEN=xxx cargo test test_line_login_post_user_v1_deauthorize -- --nocapture --test-threads=1
     #[tokio::test]

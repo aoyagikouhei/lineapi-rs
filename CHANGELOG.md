@@ -1,5 +1,13 @@
 ## Changes
 
+### v0.10.0 (2026/06/04)
+#### New Features
+- add `LineOptions::with_redacted_body_keys` to configure the keys masked by `body_redacted()`
+  - when unset, the default remains `REDACTED_BODY_KEYS` (`client_secret`, `access_token`, `refresh_token`, `code`, `code_verifier`, `id_token`, `userAccessToken`)
+  - the supplied keys **replace** the default set (not merged); include `REDACTED_BODY_KEYS` to keep them
+  - keys are normalized to lowercase and matched case-insensitively; an empty set disables masking
+  - add `LineOptions::get_redacted_body_keys()` returning the effective keys (the default when unset)
+
 ### v0.9.0 (2026/06/02)
 #### Breaking Change
 - add fields to `LineOptions` and mark it `#[non_exhaustive]`. From outside the crate it can no longer be built with a struct literal (including `..Default::default()`); use `LineOptions::default()` together with the `with_*` builder methods instead

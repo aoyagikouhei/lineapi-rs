@@ -59,7 +59,9 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, messaging_api::post_v2_bot_message_validate_push};
+    use crate::{
+        error::Error, messaging_api::post_v2_bot_message_validate_push, option::LineOptions,
+    };
 
     use super::*;
 

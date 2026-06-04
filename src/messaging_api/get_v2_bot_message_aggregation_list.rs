@@ -134,7 +134,9 @@ pub async fn execute_stream(
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, messaging_api::get_v2_bot_message_aggregation_list::execute_stream};
+    use crate::{
+        messaging_api::get_v2_bot_message_aggregation_list::execute_stream, option::LineOptions,
+    };
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_list -- --nocapture --test-threads=1
     #[tokio::test]

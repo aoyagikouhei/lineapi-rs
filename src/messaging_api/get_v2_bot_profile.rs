@@ -50,7 +50,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // USER_ID=aaa CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_get_v2_bot_profile -- --nocapture --test-threads=1
     #[tokio::test]

@@ -96,7 +96,7 @@ pub async fn execute(
 mod tests {
     use uuid::Uuid;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // USER_ID=xxx CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_post_v2_bot_message_push -- --nocapture --test-threads=1
     #[tokio::test]

@@ -44,7 +44,7 @@ pub async fn execute(
 mod tests {
     use std::time::Duration;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_get_v2_bot_message_quote_consumption -- --nocapture --test-threads=1
     #[tokio::test]

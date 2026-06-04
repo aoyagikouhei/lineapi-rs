@@ -69,7 +69,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::{LineOptions, line_login::post_oauth2_v2_1_verify};
+    use crate::{line_login::post_oauth2_v2_1_verify, option::LineOptions};
 
     // ID_TOKEN=xxx CLIENT_ID=xxx cargo test test_line_login_post_oauth2_v2_1_verify -- --nocapture --test-threads=1
     #[tokio::test]

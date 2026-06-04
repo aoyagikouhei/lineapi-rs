@@ -42,7 +42,7 @@ pub async fn execute(
 
 #[cfg(test)]
 mod tests {
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_info -- --nocapture --test-threads=1
     #[tokio::test]

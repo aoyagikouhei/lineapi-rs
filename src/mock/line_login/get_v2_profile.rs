@@ -69,7 +69,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, line_login::get_v2_profile};
+    use crate::{error::Error, line_login::get_v2_profile, option::LineOptions};
 
     use super::*;
 

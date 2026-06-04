@@ -46,7 +46,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // ACCESS_TOKEN=xxx cargo test test_line_login_get_oauth2_v2_1_verify -- --nocapture --test-threads=1
     #[tokio::test]

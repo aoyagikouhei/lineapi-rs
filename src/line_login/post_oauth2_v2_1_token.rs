@@ -103,7 +103,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // CODE=xxx REDIRECT_URI=xxx CLIENT_ID=xxx CLIENT_SECRET=xxx cargo test test_line_login_post_oauth2_v2_1_token_authorization_code -- --nocapture --test-threads=1
     #[tokio::test]
