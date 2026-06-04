@@ -907,7 +907,9 @@ mod tests {
     #[test]
     fn test_request_log_query_redacted_uses_per_call_keys() {
         let body = serde_json::Value::Null;
-        // with_redacted_body_keys は小文字正規化するため、ここでも小文字で渡す。
+        // redact_query は keys を小文字前提で完全一致照合する(option.rs の redact_query/redact_body
+        // 参照)。本テストは with_redacted_body_keys を経由せず new に直接渡すため、その正規化は
+        // 走らない。よってここでは自前で小文字に揃えて渡す必要がある。
         let custom_keys = ["mysecret".to_string()];
         let captured = make_captured(
             Method::GET,
