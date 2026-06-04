@@ -149,8 +149,8 @@ impl<'a> LineRequestLog<'a> {
     ///
     /// マスクは設定されたキーの**完全一致**(大文字小文字無視)のみで行う。リストに無いキーは
     /// マスクされず素通りする。本メソッドの戻り値を「すべての秘匿情報が除去済み」とみなさないこと。
-    /// また、マスクの有無に関わらず [`redact_query`] が `url::form_urlencoded` で再エンコードする
-    /// ため、**秘匿キーを含まないペアも表現が正規化され得る**(空白の `+`↔`%20` など)。生値の
+    /// また、マスクの有無に関わらず内部の `redact_query` が `url::form_urlencoded` で再エンコード
+    /// するため、**秘匿キーを含まないペアも表現が正規化され得る**(空白の `+`↔`%20` など)。生値の
     /// 忠実な再現が必要なら [`query`](Self::query) を使うこと。
     pub fn query_redacted(&self) -> Option<String> {
         self.query()
@@ -897,6 +897,28 @@ mod tests {
         assert!(
             !redacted.contains("super-secret"),
             "生トークンが残っている: {redacted}"
+        );
+    }
+
+    // LineRequestLog の Debug 出力はクエリ秘匿情報をマスクする(query_redacted 経由)。
+    // 将来 Debug 実装が query() の生値へ差し替わると `?log` で access_token が漏れるため、
+    // その回帰を検知して秘匿契約を固定する。
+    #[test]
+    fn test_request_log_debug_masks_query_secret() {
+        let body = serde_json::Value::Null;
+        let captured = make_captured(
+            Method::GET,
+            "/oauth2/v2.1/verify",
+            Some("access_token=super-secret&keep=v"),
+        );
+        let log = LineRequestLog::new(Some(&captured), &body, &DEFAULT_REDACTED_BODY_KEYS);
+        let dbg = format!("{log:?}");
+        // マスク済み表現が出ている
+        assert!(dbg.contains("***"), "Debug にマスク表現が無い: {dbg}");
+        // 生トークンは Debug 出力に残らない
+        assert!(
+            !dbg.contains("super-secret"),
+            "生トークンが Debug 出力に漏れている: {dbg}"
         );
     }
 
