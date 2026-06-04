@@ -75,8 +75,8 @@ pub async fn execute(
 /// 全ページを巡回し、ユニット名を 1 件ずつ流すストリームを返す。
 ///
 /// 内部ではページごとに [`execute`] を呼ぶため、`options` に設定した
-/// [`on_request`](LineOptions::with_on_request) /
-/// [`on_response`](LineOptions::with_on_response) コールバックは**ページごと**に発火する
+/// [`on_request`](crate::LineOptionsBuilder::with_on_request) /
+/// [`on_response`](crate::LineOptionsBuilder::with_on_response) コールバックは**ページごと**に発火する
 /// (リトライ時の試行ごとの発火とは別軸であり、両者は掛け合わさる)。論理的な 1 回の
 /// ストリーム消費でもページ数ぶん呼ばれる点に注意。
 pub fn make_stream(
@@ -134,17 +134,18 @@ pub async fn execute_stream(
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, messaging_api::get_v2_bot_message_aggregation_list::execute_stream};
+    use crate::{
+        messaging_api::get_v2_bot_message_aggregation_list::execute_stream, option::LineOptions,
+    };
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_list -- --nocapture --test-threads=1
     #[tokio::test]
     async fn test_get_v2_bot_message_aggregation_list() {
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
         let res = execute_stream(&channel_access_token, &options, 100)
             .await
             .unwrap();

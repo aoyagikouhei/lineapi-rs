@@ -42,17 +42,16 @@ pub async fn execute(
 
 #[cfg(test)]
 mod tests {
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_get_v2_bot_message_aggregation_info -- --nocapture --test-threads=1
     #[tokio::test]
     async fn test_get_v2_bot_message_aggregation_info() {
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
         let (response, header) = super::execute(&channel_access_token, &options)
             .await
             .unwrap();

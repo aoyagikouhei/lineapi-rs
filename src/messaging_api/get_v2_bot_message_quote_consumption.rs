@@ -44,16 +44,15 @@ pub async fn execute(
 mod tests {
     use std::time::Duration;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // CHANNEL_ACCESS_CODE=xxx cargo test test_messaging_api_get_v2_bot_message_quote_consumption -- --nocapture --test-threads=1
     #[tokio::test]
     async fn test_messaging_api_get_v2_bot_message_quote_consumption() {
         let channel_access_token = std::env::var("CHANNEL_ACCESS_CODE").unwrap();
-        let options = LineOptions {
-            timeout_duration: Some(Duration::from_secs(10)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_timeout_duration(Duration::from_secs(10))
+            .build();
         let (response, header) = super::execute(&channel_access_token, &options)
             .await
             .unwrap();

@@ -69,7 +69,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::{LineOptions, line_login::post_oauth2_v2_1_verify};
+    use crate::{line_login::post_oauth2_v2_1_verify, option::LineOptions};
 
     // ID_TOKEN=xxx CLIENT_ID=xxx cargo test test_line_login_post_oauth2_v2_1_verify -- --nocapture --test-threads=1
     #[tokio::test]
@@ -91,11 +91,10 @@ mod tests {
             user_id: None,
         };
 
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
 
         let (response, header) = post_oauth2_v2_1_verify::execute(&request_body, &options)
             .await

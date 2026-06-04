@@ -110,7 +110,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, messaging_api::post_v2_bot_message_push};
+    use crate::{error::Error, messaging_api::post_v2_bot_message_push, option::LineOptions};
 
     use super::*;
 
@@ -131,10 +131,7 @@ mod tests {
         let _res = post_v2_bot_message_push::execute(
             request_body,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
             None,
         )
         .await
@@ -163,10 +160,7 @@ mod tests {
         let res = post_v2_bot_message_push::execute(
             request_body,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
             None,
         )
         .await;
@@ -203,21 +197,20 @@ mod tests {
 
         let creq = captured_req.clone();
         let cres = captured_res.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            let has_auth = log
-                .headers()
-                .is_some_and(|h| h.contains_key("authorization"));
-            creq.lock().unwrap().push((has_auth, log.body().clone()));
-        })
-        .with_on_response(move |_req, res| {
-            cres.lock()
-                .unwrap()
-                .push((res.status_code().as_u16(), res.as_value().into_owned()));
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |log| {
+                let has_auth = log
+                    .headers()
+                    .is_some_and(|h| h.contains_key("authorization"));
+                creq.lock().unwrap().push((has_auth, log.body().clone()));
+            })
+            .with_on_response(move |_req, res| {
+                cres.lock()
+                    .unwrap()
+                    .push((res.status_code().as_u16(), res.as_value().into_owned()));
+            })
+            .build();
 
         let request_body =
             post_v2_bot_message_push::RequestBody::new("U123456789", messages).unwrap();
@@ -258,11 +251,12 @@ mod tests {
         // レスポンスヘッダーに content-type が含まれるか
         let has_content_type = Arc::new(Mutex::new(false));
         let hct = has_content_type.clone();
-        let options = LineOptions::default()
+        let options = LineOptions::builder()
             .with_prefix_url(server.url())
             .with_on_response(move |_req, res| {
                 *hct.lock().unwrap() = res.headers().contains_key("content-type");
-            });
+            })
+            .build();
 
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
@@ -301,17 +295,16 @@ mod tests {
         let sc = res_count.clone();
 
         // try_count=3, retry_duration=0 (待機なし) で試行ごとに発火することを確認
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            try_count: Some(3),
-            ..Default::default()
-        }
-        .with_on_request(move |_log| {
-            *rc.lock().unwrap() += 1;
-        })
-        .with_on_response(move |_req, _res| {
-            *sc.lock().unwrap() += 1;
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_try_count(3)
+            .with_on_request(move |_log| {
+                *rc.lock().unwrap() += 1;
+            })
+            .with_on_response(move |_req, _res| {
+                *sc.lock().unwrap() += 1;
+            })
+            .build();
 
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
@@ -359,14 +352,13 @@ mod tests {
 
         let captured = Arc::new(Mutex::new(Vec::<u16>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            try_count: Some(2),
-            ..Default::default()
-        }
-        .with_on_response(move |_req, res| {
-            c.lock().unwrap().push(res.status_code().as_u16());
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_try_count(2)
+            .with_on_response(move |_req, res| {
+                c.lock().unwrap().push(res.status_code().as_u16());
+            })
+            .build();
 
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
@@ -401,17 +393,16 @@ mod tests {
 
         let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            try_count: Some(2),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            let has_retry_key = log
-                .headers()
-                .is_some_and(|h| h.contains_key("x-line-retry-key"));
-            c.lock().unwrap().push(has_retry_key);
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_try_count(2)
+            .with_on_request(move |log| {
+                let has_retry_key = log
+                    .headers()
+                    .is_some_and(|h| h.contains_key("x-line-retry-key"));
+                c.lock().unwrap().push(has_retry_key);
+            })
+            .build();
 
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
@@ -444,17 +435,16 @@ mod tests {
 
         let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
         // on_request は設定せず on_response のみ
-        .with_on_response(move |req, _res| {
-            let has_auth = req
-                .headers()
-                .is_some_and(|h| h.contains_key("authorization"));
-            c.lock().unwrap().push(has_auth);
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_response(move |req, _res| {
+                let has_auth = req
+                    .headers()
+                    .is_some_and(|h| h.contains_key("authorization"));
+                c.lock().unwrap().push(has_auth);
+            })
+            .build();
 
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
@@ -488,18 +478,17 @@ mod tests {
         // (authorization 値, content-type が存在するか)
         let captured = Arc::new(Mutex::new(Vec::<(Option<String>, bool)>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            let redacted = log.headers_redacted().expect("headers captured");
-            let auth = redacted
-                .get("authorization")
-                .map(|v| v.to_str().unwrap().to_string());
-            let has_content_type = redacted.contains_key("content-type");
-            c.lock().unwrap().push((auth, has_content_type));
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |log| {
+                let redacted = log.headers_redacted().expect("headers captured");
+                let auth = redacted
+                    .get("authorization")
+                    .map(|v| v.to_str().unwrap().to_string());
+                let has_content_type = redacted.contains_key("content-type");
+                c.lock().unwrap().push((auth, has_content_type));
+            })
+            .build();
 
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
@@ -536,13 +525,12 @@ mod tests {
         let mock = make_mock(&mut server, Some(MockParamsBuilder::default())).await;
         let captured = Arc::new(Mutex::new(Vec::<bool>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_response(move |_req, res| {
-            c.lock().unwrap().push(res.body_was_json());
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_response(move |_req, res| {
+                c.lock().unwrap().push(res.body_was_json());
+            })
+            .build();
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
             vec![json!({"type": "text", "text": "Hello!"})],
@@ -573,15 +561,14 @@ mod tests {
         // (body_was_json, as_value)
         let captured = Arc::new(Mutex::new(Vec::<(bool, serde_json::Value)>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_response(move |_req, res| {
-            c.lock()
-                .unwrap()
-                .push((res.body_was_json(), res.as_value().into_owned()));
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_response(move |_req, res| {
+                c.lock()
+                    .unwrap()
+                    .push((res.body_was_json(), res.as_value().into_owned()));
+            })
+            .build();
         let request_body = post_v2_bot_message_push::RequestBody::new(
             "U123456789",
             vec![json!({"type": "text", "text": "Hello!"})],

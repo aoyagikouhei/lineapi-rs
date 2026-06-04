@@ -55,7 +55,9 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, messaging_api::get_v2_bot_message_quote_consumption};
+    use crate::{
+        error::Error, messaging_api::get_v2_bot_message_quote_consumption, option::LineOptions,
+    };
 
     use super::*;
 
@@ -69,10 +71,7 @@ mod tests {
 
         let res = get_v2_bot_message_quote_consumption::execute(
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -92,10 +91,7 @@ mod tests {
 
         let res = get_v2_bot_message_quote_consumption::execute(
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

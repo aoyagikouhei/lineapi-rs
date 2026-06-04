@@ -59,7 +59,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, line_login::post_user_v1_deauthorize};
+    use crate::{error::Error, line_login::post_user_v1_deauthorize, option::LineOptions};
 
     use super::*;
 
@@ -77,10 +77,7 @@ mod tests {
         let res = post_user_v1_deauthorize::execute(
             "test_channel_access_token",
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -106,10 +103,7 @@ mod tests {
         let res = post_user_v1_deauthorize::execute(
             "test_channel_access_token",
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

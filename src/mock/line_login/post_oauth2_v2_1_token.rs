@@ -129,7 +129,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, line_login::post_oauth2_v2_1_token};
+    use crate::{error::Error, line_login::post_oauth2_v2_1_token, option::LineOptions};
 
     use super::*;
 
@@ -154,10 +154,7 @@ mod tests {
 
         let res = post_oauth2_v2_1_token::execute(
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -189,10 +186,7 @@ mod tests {
 
         let res = post_oauth2_v2_1_token::execute(
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -224,10 +218,7 @@ mod tests {
 
         let res = post_oauth2_v2_1_token::execute(
             &request_body,
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 
@@ -269,18 +260,17 @@ mod tests {
         let res_redacted = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
         let rq = req.clone();
         let rs = res_redacted.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            rq.lock()
-                .unwrap()
-                .push((log.body().clone(), log.body_redacted()));
-        })
-        .with_on_response(move |_req, res| {
-            rs.lock().unwrap().push(res.body_redacted());
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |log| {
+                rq.lock()
+                    .unwrap()
+                    .push((log.body().clone(), log.body_redacted()));
+            })
+            .with_on_response(move |_req, res| {
+                rs.lock().unwrap().push(res.body_redacted());
+            })
+            .build();
 
         let request_body = post_oauth2_v2_1_token::RequestBody::AuthorizationCode {
             code: "auth_code_123".to_string(),
@@ -317,5 +307,59 @@ mod tests {
         assert_eq!(res_redacted[0]["access_token"], "***");
         assert_eq!(res_redacted[0]["refresh_token"], "***");
         assert_eq!(res_redacted[0]["token_type"], "Bearer");
+    }
+
+    // with_redacted_body_keys で設定したカスタムキーが、実 `execute` 経路
+    // (options.get_redacted_body_keys() → LineRequestLog → body_redacted)を通って
+    // 効くことを E2E で固定する。replace セマンティクスにより、カスタム指定した `client_id` は
+    // マスクされ、既定キー(`client_secret` / `code`)は置き換えられてマスクされなくなる。
+    // cargo test --all-features test_make_mock_post_oauth2_v2_1_token_body_redacted_custom_keys -- --nocapture --test-threads=1
+    #[tokio::test]
+    async fn test_make_mock_post_oauth2_v2_1_token_body_redacted_custom_keys() {
+        use std::sync::{Arc, Mutex};
+
+        let mut server = Server::new_async().await;
+        let mut builder = MockParamsBuilder::default();
+        builder.grant_type("authorization_code".to_string());
+        builder.code("auth_code_123".to_string());
+        builder.redirect_uri("https://myapp.com/callback".to_string());
+        builder.client_secret("super_secret".to_string());
+        let mock = make_mock(&mut server, Some(builder)).await;
+
+        // req body マスク後
+        let req_redacted = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+        let rq = req_redacted.clone();
+        // 既定セットを ["client_id"] で完全置換する
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_redacted_body_keys(["client_id"])
+            .with_on_request(move |log| {
+                rq.lock().unwrap().push(log.body_redacted());
+            })
+            .build();
+
+        let request_body = post_oauth2_v2_1_token::RequestBody::AuthorizationCode {
+            code: "auth_code_123".to_string(),
+            redirect_uri: "https://myapp.com/callback".to_string(),
+            client_id: "1234567890".to_string(),
+            client_secret: "super_secret".to_string(),
+            code_verifier: Some("verifier_value".to_string()),
+        };
+
+        let _res = post_oauth2_v2_1_token::execute(&request_body, &options)
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+
+        let req_redacted = req_redacted.lock().unwrap();
+        assert_eq!(req_redacted.len(), 1);
+        let redacted = &req_redacted[0];
+        // カスタム指定した client_id はマスクされる(execute 経路で配線されている証拠)
+        assert_eq!(redacted["client_id"], "***");
+        // 既定キーは置き換えられたのでマスクされない(replace セマンティクス)
+        assert_eq!(redacted["client_secret"], "super_secret");
+        assert_eq!(redacted["code"], "auth_code_123");
+        assert_eq!(redacted["code_verifier"], "verifier_value");
     }
 }

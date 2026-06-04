@@ -55,7 +55,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, line_login::get_friendship_v1_status};
+    use crate::{error::Error, line_login::get_friendship_v1_status, option::LineOptions};
 
     use super::*;
 
@@ -69,10 +69,7 @@ mod tests {
 
         let res = get_friendship_v1_status::execute(
             "test_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -92,10 +89,7 @@ mod tests {
 
         let res = get_friendship_v1_status::execute(
             "test_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 
@@ -124,13 +118,12 @@ mod tests {
 
         let captured = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
         let c = captured.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            c.lock().unwrap().push(log.body().clone());
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |log| {
+                c.lock().unwrap().push(log.body().clone());
+            })
+            .build();
 
         let _res = get_friendship_v1_status::execute("test_access_token", &options)
             .await

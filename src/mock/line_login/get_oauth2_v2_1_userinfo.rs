@@ -68,7 +68,7 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, line_login::get_oauth2_v2_1_userinfo};
+    use crate::{error::Error, line_login::get_oauth2_v2_1_userinfo, option::LineOptions};
 
     use super::*;
 
@@ -84,10 +84,7 @@ mod tests {
 
         let res = get_oauth2_v2_1_userinfo::execute_get(
             "test_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -116,10 +113,7 @@ mod tests {
 
         let res = get_oauth2_v2_1_userinfo::execute_get(
             "test_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

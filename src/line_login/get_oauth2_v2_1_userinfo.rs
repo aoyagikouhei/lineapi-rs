@@ -71,7 +71,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::{LineOptions, line_login::get_oauth2_v2_1_userinfo};
+    use crate::{line_login::get_oauth2_v2_1_userinfo, option::LineOptions};
 
     // ACCESS_TOKEN=xxx cargo test test_line_login_get_oauth2_v2_1_userinfo -- --nocapture --test-threads=1
     #[tokio::test]
@@ -84,11 +84,10 @@ mod tests {
             .expect("setting default subscriber failed");
 
         let access_token = std::env::var("ACCESS_TOKEN").unwrap();
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
 
         // Test GET method
         let (response, header) = get_oauth2_v2_1_userinfo::execute_get(&access_token, &options)

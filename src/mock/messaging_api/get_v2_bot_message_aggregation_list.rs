@@ -86,7 +86,9 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, messaging_api::get_v2_bot_message_aggregation_list};
+    use crate::{
+        error::Error, messaging_api::get_v2_bot_message_aggregation_list, option::LineOptions,
+    };
 
     use super::*;
 
@@ -112,10 +114,7 @@ mod tests {
         let res = get_v2_bot_message_aggregation_list::execute(
             &query_params,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -147,10 +146,7 @@ mod tests {
         let res = get_v2_bot_message_aggregation_list::execute(
             &query_params,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -177,10 +173,7 @@ mod tests {
         let res = get_v2_bot_message_aggregation_list::execute(
             &query_params,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 
@@ -213,13 +206,12 @@ mod tests {
 
         let captured_req = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
         let creq = captured_req.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |log| {
-            creq.lock().unwrap().push(log.body().clone());
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |log| {
+                creq.lock().unwrap().push(log.body().clone());
+            })
+            .build();
 
         let query_params = get_v2_bot_message_aggregation_list::QueryParams {
             limit: Some(50),
@@ -290,16 +282,15 @@ mod tests {
         let res_count = Arc::new(Mutex::new(0usize));
         let rq = req_count.clone();
         let rs = res_count.clone();
-        let options = LineOptions {
-            prefix_url: Some(server.url()),
-            ..Default::default()
-        }
-        .with_on_request(move |_log| {
-            *rq.lock().unwrap() += 1;
-        })
-        .with_on_response(move |_req, _res| {
-            *rs.lock().unwrap() += 1;
-        });
+        let options = LineOptions::builder()
+            .with_prefix_url(server.url())
+            .with_on_request(move |_log| {
+                *rq.lock().unwrap() += 1;
+            })
+            .with_on_response(move |_req, _res| {
+                *rs.lock().unwrap() += 1;
+            })
+            .build();
 
         let res = get_v2_bot_message_aggregation_list::execute_stream(
             "test_channel_access_token",

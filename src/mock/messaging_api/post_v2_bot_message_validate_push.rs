@@ -59,7 +59,9 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
 
 #[cfg(test)]
 mod tests {
-    use crate::{LineOptions, error::Error, messaging_api::post_v2_bot_message_validate_push};
+    use crate::{
+        error::Error, messaging_api::post_v2_bot_message_validate_push, option::LineOptions,
+    };
 
     use super::*;
 
@@ -80,10 +82,7 @@ mod tests {
         let res = post_v2_bot_message_validate_push::execute(
             request_body,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -112,10 +111,7 @@ mod tests {
         let res = post_v2_bot_message_validate_push::execute(
             request_body,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await
         .unwrap();
@@ -141,10 +137,7 @@ mod tests {
         let res = post_v2_bot_message_validate_push::execute(
             request_body,
             "test_channel_access_token",
-            &LineOptions {
-                prefix_url: Some(server.url()),
-                ..Default::default()
-            },
+            &LineOptions::builder().with_prefix_url(server.url()).build(),
         )
         .await;
 

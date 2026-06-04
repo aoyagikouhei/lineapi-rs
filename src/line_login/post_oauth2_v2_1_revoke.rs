@@ -66,7 +66,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // ACCESS_TOKEN=xxx CLIENT_ID=xxx CLIENT_SECRET=xxx cargo test test_line_login_post_oauth2_v2_1_revoke -- --nocapture --test-threads=1
     #[tokio::test]
@@ -82,11 +82,10 @@ mod tests {
         let client_id = std::env::var("CLIENT_ID").unwrap();
         let client_secret = std::env::var("CLIENT_SECRET").ok();
 
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
 
         let (response, header) =
             super::execute_simple(&access_token, &client_id, client_secret, &options)

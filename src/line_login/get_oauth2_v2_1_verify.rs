@@ -46,7 +46,7 @@ mod tests {
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
-    use crate::LineOptions;
+    use crate::option::LineOptions;
 
     // ACCESS_TOKEN=xxx cargo test test_line_login_get_oauth2_v2_1_verify -- --nocapture --test-threads=1
     #[tokio::test]
@@ -60,11 +60,10 @@ mod tests {
 
         let access_token = std::env::var("ACCESS_TOKEN").unwrap();
 
-        let options = LineOptions {
-            try_count: Some(3),
-            retry_duration: Some(std::time::Duration::from_secs(1)),
-            ..Default::default()
-        };
+        let options = LineOptions::builder()
+            .with_try_count(3)
+            .with_retry_duration(std::time::Duration::from_secs(1))
+            .build();
 
         let (response, header) = super::execute(&access_token, &options).await.unwrap();
         println!("{}", serde_json::to_value(&response).unwrap());
