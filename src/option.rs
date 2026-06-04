@@ -900,6 +900,28 @@ mod tests {
         );
     }
 
+    // query_redacted() は per-call の redacted_body_keys フィールド(execute_api_raw が
+    // options.get_redacted_body_keys() から配線)を使う。カスタムキーを LineRequestLog::new に
+    // 渡すと、そのキーがマスクされ既定の access_token は素通しになる(replace セマンティクス)。
+    // query_redacted が REDACTED_BODY_KEYS をハードコードする回帰を検知する(配線レイヤの固定)。
+    #[test]
+    fn test_request_log_query_redacted_uses_per_call_keys() {
+        let body = serde_json::Value::Null;
+        // with_redacted_body_keys は小文字正規化するため、ここでも小文字で渡す。
+        let custom_keys = ["mysecret".to_string()];
+        let captured = make_captured(
+            Method::GET,
+            "/oauth2/v2.1/verify",
+            Some("mysecret=s&access_token=at"),
+        );
+        let log = LineRequestLog::new(Some(&captured), &body, &custom_keys);
+        // カスタムキーはマスクされ、既定キー access_token は置換セマンティクスでマスクされない。
+        assert_eq!(
+            log.query_redacted().as_deref(),
+            Some("mysecret=***&access_token=at")
+        );
+    }
+
     // LineRequestLog の Debug 出力はクエリ秘匿情報をマスクする(query_redacted 経由)。
     // 将来 Debug 実装が query() の生値へ差し替わると `?log` で access_token が漏れるため、
     // その回帰を検知して秘匿契約を固定する。
