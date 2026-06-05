@@ -49,6 +49,8 @@ pub struct ResponseBody {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub family_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub family_name_pronunciation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gender: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub birthdate: Option<String>,
