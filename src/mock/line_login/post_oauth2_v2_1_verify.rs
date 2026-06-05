@@ -3,6 +3,8 @@ use mockito::{Mock, Server};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::line_login::post_oauth2_v2_1_verify::Address;
+
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, Default)]
 #[builder(setter(into))]
 #[builder(default)]
@@ -24,6 +26,16 @@ pub struct MockParams {
     pub name: Option<String>,
     pub picture: Option<String>,
     pub email: Option<String>,
+    // Profile+ のフィールド
+    pub given_name: Option<String>,
+    pub given_name_pronunciation: Option<String>,
+    pub middle_name: Option<String>,
+    pub family_name: Option<String>,
+    pub family_name_pronunciation: Option<String>,
+    pub gender: Option<String>,
+    pub birthdate: Option<String>,
+    pub phone_number: Option<String>,
+    pub address: Option<Address>,
     pub error_message: Option<String>,
 }
 
@@ -85,6 +97,33 @@ pub async fn make_mock(server: &mut Server, builder: Option<MockParamsBuilder>) 
         if params.email.is_some() {
             json["email"] = params.email.clone().into();
         }
+        if params.given_name.is_some() {
+            json["given_name"] = params.given_name.clone().into();
+        }
+        if params.given_name_pronunciation.is_some() {
+            json["given_name_pronunciation"] = params.given_name_pronunciation.clone().into();
+        }
+        if params.middle_name.is_some() {
+            json["middle_name"] = params.middle_name.clone().into();
+        }
+        if params.family_name.is_some() {
+            json["family_name"] = params.family_name.clone().into();
+        }
+        if params.family_name_pronunciation.is_some() {
+            json["family_name_pronunciation"] = params.family_name_pronunciation.clone().into();
+        }
+        if params.gender.is_some() {
+            json["gender"] = params.gender.clone().into();
+        }
+        if params.birthdate.is_some() {
+            json["birthdate"] = params.birthdate.clone().into();
+        }
+        if params.phone_number.is_some() {
+            json["phone_number"] = params.phone_number.clone().into();
+        }
+        if let Some(address) = &params.address {
+            json["address"] = serde_json::to_value(address).unwrap();
+        }
         json
     } else {
         json!({
@@ -130,6 +169,22 @@ mod tests {
         builder.name(Some("Test User".to_string()));
         builder.picture(Some("https://example.com/picture.jpg".to_string()));
         builder.email(Some("test@example.com".to_string()));
+        builder.given_name(Some("Taro".to_string()));
+        builder.given_name_pronunciation(Some("タロウ".to_string()));
+        builder.middle_name(Some("M".to_string()));
+        builder.family_name(Some("Yamada".to_string()));
+        builder.family_name_pronunciation(Some("ヤマダ".to_string()));
+        builder.gender(Some("male".to_string()));
+        builder.birthdate(Some("1990-01-01".to_string()));
+        builder.phone_number(Some("+819012345678".to_string()));
+        builder.address(Some(Address {
+            country: Some("JP".to_string()),
+            postal_code: Some("150-0002".to_string()),
+            region: Some("Tokyo".to_string()),
+            locality: Some("Shibuya".to_string()),
+            street_address: Some("1-2-3".to_string()),
+            extra: std::collections::HashMap::new(),
+        }));
         let mock = make_mock(&mut server, Some(builder)).await;
 
         let request_body = post_oauth2_v2_1_verify::RequestBody {
@@ -160,6 +215,20 @@ mod tests {
             Some("https://example.com/picture.jpg".to_string())
         );
         assert_eq!(res.0.email, Some("test@example.com".to_string()));
+        assert_eq!(res.0.given_name, Some("Taro".to_string()));
+        assert_eq!(res.0.given_name_pronunciation, Some("タロウ".to_string()));
+        assert_eq!(res.0.middle_name, Some("M".to_string()));
+        assert_eq!(res.0.family_name, Some("Yamada".to_string()));
+        assert_eq!(res.0.family_name_pronunciation, Some("ヤマダ".to_string()));
+        assert_eq!(res.0.gender, Some("male".to_string()));
+        assert_eq!(res.0.birthdate, Some("1990-01-01".to_string()));
+        assert_eq!(res.0.phone_number, Some("+819012345678".to_string()));
+        let address = res.0.address.unwrap();
+        assert_eq!(address.country, Some("JP".to_string()));
+        assert_eq!(address.postal_code, Some("150-0002".to_string()));
+        assert_eq!(address.region, Some("Tokyo".to_string()));
+        assert_eq!(address.locality, Some("Shibuya".to_string()));
+        assert_eq!(address.street_address, Some("1-2-3".to_string()));
 
         mock.assert_async().await;
     }
@@ -192,6 +261,12 @@ mod tests {
         assert!(res.0.name.is_none());
         assert!(res.0.picture.is_none());
         assert!(res.0.email.is_none());
+        assert!(res.0.given_name.is_none());
+        assert!(res.0.family_name.is_none());
+        assert!(res.0.gender.is_none());
+        assert!(res.0.birthdate.is_none());
+        assert!(res.0.phone_number.is_none());
+        assert!(res.0.address.is_none());
 
         mock.assert_async().await;
     }

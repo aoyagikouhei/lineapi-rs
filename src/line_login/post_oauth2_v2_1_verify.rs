@@ -76,6 +76,10 @@ pub struct Address {
     pub locality: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub street_address: Option<String>,
+
+    // その他
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 pub fn build(request_body: &RequestBody, options: &LineOptions) -> RequestBuilder {
