@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.12.0 (2026/06/05)
+#### New Features
+- add additional fileds in post_oauth2_v2_1_verify for profile plus 
+
 ### v0.11.0 (2026/06/04)
 #### New Features
 - add `method()` / `path()` / `query()` / `query_redacted()` accessors to `LineRequestLog`
