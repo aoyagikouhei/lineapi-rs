@@ -4,6 +4,15 @@ use thiserror::Error;
 
 use crate::LineResponseHeader;
 
+// https://developers.line.biz/ja/reference/line-login/index.html.md
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LineLoginErrorResponse {
+    pub error: String,
+    pub error_description: String,
+    #[serde(flatten)]
+    pub extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ErrorResponse {
     pub message: String,
@@ -38,12 +47,16 @@ pub enum Error {
 
     #[error("Line {0:?} {1}")]
     Line(ErrorResponse, StatusCode, LineResponseHeader),
+
+    #[error("LineLogin {0:?} {1}")]
+    LineLogin(LineLoginErrorResponse, StatusCode, LineResponseHeader),
 }
 
 impl Error {
     pub fn status_code(&self) -> Option<StatusCode> {
         match self {
             Error::Line(_, status_code, _) => Some(*status_code),
+            Error::LineLogin(_, status_code, _) => Some(*status_code),
             Error::OtherJson(_, status_code, _) => Some(*status_code),
             Error::OtherText(_, status_code, _) => Some(*status_code),
             _ => None,
@@ -53,6 +66,13 @@ impl Error {
     pub fn make_json(&self) -> serde_json::Value {
         match self {
             Error::Line(response, status_code, line_header) => {
+                serde_json::json!({
+                    "response": response,
+                    "status_code": status_code.as_u16(),
+                    "line_header": line_header
+                })
+            }
+            Error::LineLogin(response, status_code, line_header) => {
                 serde_json::json!({
                     "response": response,
                     "status_code": status_code.as_u16(),

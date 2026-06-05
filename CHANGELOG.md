@@ -1,5 +1,9 @@
 ## Changes
 
+### v0.13.0 (2026/06/05)
+#### New Features
+- add line login error
+
 ### v0.12.0 (2026/06/05)
 #### New Features
 - add additional fileds in post_oauth2_v2_1_verify for profile plus 

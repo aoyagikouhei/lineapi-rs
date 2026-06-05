@@ -7,7 +7,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::error::{Error, ErrorResponse};
+use crate::error::{Error, ErrorResponse, LineLoginErrorResponse};
 
 pub mod error;
 pub mod line_login;
@@ -247,7 +247,14 @@ where
                         Ok(error_response) => {
                             Err(Error::Line(error_response, status_code, line_header))
                         }
-                        Err(_) => Err(Error::OtherJson(json, status_code, line_header)),
+                        Err(_) => {
+                            match serde_json::from_value::<LineLoginErrorResponse>(json.clone()) {
+                                Ok(error_response) => {
+                                    Err(Error::LineLogin(error_response, status_code, line_header))
+                                }
+                                Err(_) => Err(Error::OtherJson(json, status_code, line_header)),
+                            }
+                        }
                     },
                 };
                 break;
