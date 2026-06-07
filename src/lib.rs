@@ -192,13 +192,23 @@ pub(crate) async fn execute_api_raw(
     if status_code.is_success() || (allow_conflict && status_code == StatusCode::CONFLICT) {
         Ok((json, line_header, status_code))
     } else {
+        // エラーステータスのボディも ErrorResponse → LineLoginErrorResponse → OtherJson の
+        // 順で分類する(execute_api の成功経路と同じ順序に揃える)。
+        // LINE Login 系の invalid_grant などは LineLoginErrorResponse 形式で返るため。
         match serde_json::from_value::<ErrorResponse>(json.clone()) {
             Ok(error_response) => Err(Box::new(Error::Line(
                 error_response,
                 status_code,
                 line_header,
             ))),
-            Err(_) => Err(Box::new(Error::OtherJson(json, status_code, line_header))),
+            Err(_) => match serde_json::from_value::<LineLoginErrorResponse>(json.clone()) {
+                Ok(error_response) => Err(Box::new(Error::LineLogin(
+                    error_response,
+                    status_code,
+                    line_header,
+                ))),
+                Err(_) => Err(Box::new(Error::OtherJson(json, status_code, line_header))),
+            },
         }
     }
 }
@@ -352,4 +362,156 @@ mod tests {
     // 補足: レスポンスボディの読取失敗(`response.text()` のエラー)が Error::Reqwest として
     // 伝播する経路(execute_api_raw)は、mockito では決定的に途中切断を起こしにくいため
     // ユニットテスト化していない。コード上は `.map_err(Error::Reqwest)?` で握り潰さず伝播する。
+
+    // エラーステータス(400)で invalid_grant 形式のボディは Error::LineLogin に分類される。
+    #[cfg(feature = "mock")]
+    #[tokio::test]
+    async fn test_error_status_invalid_grant_is_line_login() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .with_status(400)
+            .with_body(r#"{"error":"invalid_grant","error_description":"invalid grant"}"#)
+            .create_async()
+            .await;
+        let url = format!("{}/test", server.url());
+        let options = LineOptions::default();
+
+        let result: Result<(serde_json::Value, LineResponseHeader), _> = execute_api(
+            || reqwest::Client::new().post(&url),
+            &options,
+            is_standard_retry,
+            None,
+            || serde_json::Value::Null,
+        )
+        .await;
+
+        match result {
+            Err(boxed) => match *boxed {
+                Error::LineLogin(resp, status_code, _) => {
+                    assert_eq!(resp.error, "invalid_grant");
+                    assert_eq!(status_code, StatusCode::BAD_REQUEST);
+                }
+                other => panic!("expected Error::LineLogin, got {other:?}"),
+            },
+            Ok(_) => panic!("expected an error"),
+        }
+        mock.assert_async().await;
+    }
+
+    // 成功ステータス(200)でも、ボディが目的の型に合致せず LineLoginErrorResponse 形式の
+    // 場合は Error::LineLogin に分類される(execute_api の成功経路側の分岐)。
+    #[cfg(feature = "mock")]
+    #[tokio::test]
+    async fn test_success_status_line_login_error_body() {
+        #[derive(serde::Deserialize, Debug)]
+        struct Dummy {
+            #[allow(dead_code)]
+            id: u64,
+        }
+
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .with_status(200)
+            .with_body(r#"{"error":"invalid_grant","error_description":"invalid grant"}"#)
+            .create_async()
+            .await;
+        let url = format!("{}/test", server.url());
+        let options = LineOptions::default();
+
+        let result: Result<(Dummy, LineResponseHeader), _> = execute_api(
+            || reqwest::Client::new().post(&url),
+            &options,
+            is_standard_retry,
+            None,
+            || serde_json::Value::Null,
+        )
+        .await;
+
+        match result {
+            Err(boxed) => match *boxed {
+                Error::LineLogin(resp, status_code, _) => {
+                    assert_eq!(resp.error, "invalid_grant");
+                    assert_eq!(status_code, StatusCode::OK);
+                }
+                other => panic!("expected Error::LineLogin, got {other:?}"),
+            },
+            Ok(_) => panic!("expected an error"),
+        }
+        mock.assert_async().await;
+    }
+
+    // エラーステータスで message を持つボディは LineLoginErrorResponse より先に
+    // ErrorResponse として判定され、Error::Line に分類される(優先順位の確認)。
+    #[cfg(feature = "mock")]
+    #[tokio::test]
+    async fn test_error_status_message_is_line() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .with_status(400)
+            .with_body(r#"{"message":"bad request"}"#)
+            .create_async()
+            .await;
+        let url = format!("{}/test", server.url());
+        let options = LineOptions::default();
+
+        let result: Result<(serde_json::Value, LineResponseHeader), _> = execute_api(
+            || reqwest::Client::new().post(&url),
+            &options,
+            is_standard_retry,
+            None,
+            || serde_json::Value::Null,
+        )
+        .await;
+
+        match result {
+            Err(boxed) => match *boxed {
+                Error::Line(resp, status_code, _) => {
+                    assert_eq!(resp.message, "bad request");
+                    assert_eq!(status_code, StatusCode::BAD_REQUEST);
+                }
+                other => panic!("expected Error::Line, got {other:?}"),
+            },
+            Ok(_) => panic!("expected an error"),
+        }
+        mock.assert_async().await;
+    }
+
+    // どちらの形式にも合致しないボディは Error::OtherJson にフォールバックする。
+    #[cfg(feature = "mock")]
+    #[tokio::test]
+    async fn test_error_status_unrecognized_is_other_json() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .with_status(400)
+            .with_body(r#"{"foo":"bar"}"#)
+            .create_async()
+            .await;
+        let url = format!("{}/test", server.url());
+        let options = LineOptions::default();
+
+        let result: Result<(serde_json::Value, LineResponseHeader), _> = execute_api(
+            || reqwest::Client::new().post(&url),
+            &options,
+            is_standard_retry,
+            None,
+            || serde_json::Value::Null,
+        )
+        .await;
+
+        match result {
+            Err(boxed) => match *boxed {
+                Error::OtherJson(json, status_code, _) => {
+                    assert_eq!(json["foo"], "bar");
+                    assert_eq!(status_code, StatusCode::BAD_REQUEST);
+                }
+                other => panic!("expected Error::OtherJson, got {other:?}"),
+            },
+            Ok(_) => panic!("expected an error"),
+        }
+        mock.assert_async().await;
+    }
 }

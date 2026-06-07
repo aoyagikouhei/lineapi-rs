@@ -1,5 +1,12 @@
 ## Changes
 
+### v0.13.1 (2026/06/08)
+#### Bug Fixes
+- classify LINE Login error-status bodies (e.g. `invalid_grant` returned as HTTP 400
+  with `{"error":...}`) as `Error::LineLogin` instead of `Error::OtherJson`, matching
+  the success-status classification order (`ErrorResponse` → `LineLoginErrorResponse`
+  → `OtherJson`)
+
 ### v0.13.0 (2026/06/05)
 #### New Features
 - add line login error
